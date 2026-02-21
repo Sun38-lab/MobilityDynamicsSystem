@@ -1,0 +1,31 @@
+# --- STM32CubeIDE (Eclipse) Build Folders ---
+# コンパイル時に自動生成されるフォルダ（中間ファイルや実行ファイルが格納されます）
+Debug/
+Release/
+
+# --- Build Artifacts (念のため個別の拡張子も除外) ---
+# オブジェクトファイルやマイコンに書き込むためのバイナリファイルなど
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.su
+
+# --- IDE Settings & Logs ---
+# ユーザーごとのローカルなウィンドウ配置設定や実行時のログファイル
+.metadata/
+*.launch
+*.log
+
+# --- STM32CubeMX Backup Files ---
+# .iocファイルを上書き保存した時にできるバックアップ
+*.bak
+
+# --- Visual Studio (C#) ---
+# ビルド時の出力フォルダと一時ファイル
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
