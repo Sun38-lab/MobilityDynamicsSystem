@@ -24,7 +24,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -91,8 +92,133 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-  uint8_t test_msg[] = "STM32 System Boot OK\r\n";
-  HAL_UART_Transmit(&huart2, test_msg, sizeof(test_msg)-1, 1000);
+//  char uart_buf[50];
+//  sprintf(uart_buf,"Starting I2C Scan...\r\n");
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//
+//  //1から127までのI2Cアドレスをスキャン
+//  for(uint8_t i = 1; i < 128; i++){
+//	  //STM32のHALライブラリでは、I2Cアドレスを左に1ビットシフトして渡す使用
+//	  HAL_StatusTypeDef result = HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)(i << 1), 2,2);
+//
+//	  //応答があった場合
+//	  // 応答があった場合（HAL_OK）
+//	      if (result == HAL_OK) {
+//	          sprintf(uart_buf, "I2C device found at address 0x%02X\r\n", i);
+//	          HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//	      }
+//  }
+//
+//sprintf(uart_buf,"I2C Scam Complete.\r\n");
+//HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+
+//  char uart_buf[50];
+//  uint8_t who_am_i = 0;
+//
+//  sprintf(uart_buf, "Checking MPU-6050 WHO_AM_I...\r\n");
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//
+//  // STM32内部のI2C回路を強制リセットして叩き起こす
+//  __HAL_RCC_I2C1_FORCE_RESET();
+//  HAL_Delay(10);
+//  __HAL_RCC_I2C1_RELEASE_RESET();
+//  HAL_I2C_Init(&hi2c1); // I2Cを再初期化
+//  HAL_Delay(10);
+//
+//  // I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を1バイト直接読み取る
+//  HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
+//
+//  if (ret == HAL_OK) {
+//      // 成功した場合
+//      sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
+//  } else {
+//      // 失敗した場合
+//      sprintf(uart_buf, "Failed. Error Code = %d\r\n", ret);
+//  }
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+
+//  char uart_buf[50];
+//
+//  sprintf(uart_buf, "\r\n--- I2C Hardware Diagnosis ---\r\n");
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//
+//  // PB8(SCL)とPB9(SDA)の「実際の電圧（High=1, Low=0）」を直接読み取る
+//  GPIO_PinState scl = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8);
+//  GPIO_PinState sda = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9);
+//
+//  // 結果をTeraTermに送信
+//  sprintf(uart_buf, "SCL (PB8) Level = %d\r\n", scl);
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//
+//  sprintf(uart_buf, "SDA (PB9) Level = %d\r\n", sda);
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+//
+//  if (scl == 1 && sda == 1) {
+//      sprintf(uart_buf, "Result: Hardware OK (1,1). STM32 I2C is frozen!\r\n");
+//  } else {
+//      sprintf(uart_buf, "Result: Hardware Error. Line is pulled LOW.\r\n");
+//  }
+//  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+
+
+  char uart_buf[70];
+  uint8_t who_am_i = 0;
+
+  sprintf(uart_buf, "\r\n--- Executing I2C Bus Recovery ---\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+  // 1. PB8(SCL)とPB9(SDA)を一時的に「手動スイッチ(GPIO出力)」に変更
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD; // オープンドレイン出力
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  // 2. 通信終了(STOPコンディション)の波形を強制的に手動で作り出す
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // SDA Low
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); // SCL Low
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
+  HAL_Delay(1);
+
+  // 3. PB8とPB9を再び「I2C通信ピン」に戻す (STM32F401のI2C1はAF4)
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  // 4. I2C回路のハードウェアリセットと再初期化
+  __HAL_RCC_I2C1_FORCE_RESET();
+  HAL_Delay(2);
+  __HAL_RCC_I2C1_RELEASE_RESET();
+  HAL_I2C_Init(&hi2c1);
+
+  // --- ここから本来のWHO_AM_I読み取り処理 ---
+  sprintf(uart_buf, "Checking MPU-6050 WHO_AM_I...\r\n");
+  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+  // I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を読み取る
+  HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
+
+  if (ret == HAL_OK) {
+      sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
+  } else {
+      sprintf(uart_buf, "Failed. Error Code = %d\r\n", ret);
+  }
+  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, strlen(uart_buf), 100);
+
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
