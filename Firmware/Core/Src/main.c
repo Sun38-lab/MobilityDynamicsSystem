@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +42,9 @@
 //レジスタアドレス
 #define MPU_REG_PWR_MGMT_1 0x68
 #define MPU_REG_ACCEL_XOUT_H 0x3B
+
+#define PI 3.14159265358979f
+#define DT 0.01f
 
 /* USER CODE END PD */
 
@@ -58,6 +62,9 @@ int16_t raw_gyro_x, raw_gyro_y, raw_gyro_z;
 // 物理量（G, deg/s）格納用変数
 float accel_x_g, accel_y_g, accel_z_g;
 float gyro_x_dps, gyro_y_dps, gyro_z_dps;
+
+// ジャイロの角度を蓄積（積分）するための変数（ループの外に置くか、グローバル変数にする）
+float gyro_only_roll = 0.0f;
 
 //UART送信用バッファ
 char uart_buf[100];
@@ -172,6 +179,7 @@ int main(void) {
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+
 	while (1) {
 
 		// --- 2. センサーデータの連続読み取り ---
@@ -203,9 +211,21 @@ int main(void) {
 		gyro_y_dps = (float) raw_gyro_y / 131.0f;
 		gyro_z_dps = (float) raw_gyro_z / 131.0f;
 
+		// 1. 加速度センサーのみで求めたロール角（単位：度）
+		// atan2fで角度（ラジアン）を求め、(180 / PI) を掛けて「度(deg)」に変換します
+		float acc_only_roll = atan2f(accel_y_g, accel_z_g) * (180.0f / PI);
+
+		// 2. ジャイロセンサーのみで求めたロール角（単位：度）
+		// 前回の角度に、今回の角速度(deg/s) × 時間(s) を足し合わせます（積分）
+		gyro_only_roll += gyro_x_dps * DT;
+
 		// --- UART出力（C#でのパースを意識したフォーマット） ---
-		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g,
-				accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps);
+//		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g,
+//				accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps);
+
+		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
+				accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps,
+				gyro_z_dps, acc_only_roll, gyro_only_roll);
 
 		HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf),
 		HAL_MAX_DELAY);
