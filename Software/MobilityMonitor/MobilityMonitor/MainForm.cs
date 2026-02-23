@@ -14,7 +14,8 @@ namespace MobilityMonitor
 
         private DataLogger loggerAccAngle; //角速度からの角度
         private DataLogger loggerGyroAngle; //加速度からの角度
-        private DataLogger loggerCompAngle; //補正後の角度
+        private DataLogger loggerCompRollAngle; //補正後角ロール角
+        private DataLogger loggerCompPitchAngle; //補正後のピッチ角
 
         public MainForm()
         {
@@ -25,26 +26,28 @@ namespace MobilityMonitor
 
         private void SetupPlot()
         {
-            loggerAccelX = formsPlot1.Plot.Add.DataLogger();
-            loggerGyroX = formsPlot1.Plot.Add.DataLogger();
+            //loggerAccelX = formsPlot1.Plot.Add.DataLogger();
+            //loggerGyroX = formsPlot1.Plot.Add.DataLogger();
             loggerAccAngle = formsPlot1.Plot.Add.DataLogger();
             loggerGyroAngle = formsPlot1.Plot.Add.DataLogger();
-            loggerCompAngle = formsPlot1.Plot.Add.DataLogger();
+            loggerCompRollAngle = formsPlot1.Plot.Add.DataLogger();
+            loggerCompPitchAngle = formsPlot1.Plot.Add.DataLogger();
 
-            loggerAccelX.Color = Colors.Blue;
-            loggerGyroX.Color = Colors.Red;
+            //loggerAccelX.Color = Colors.Blue;
+            //loggerGyroX.Color = Colors.Red;
             loggerAccAngle.Color = Colors.LightBlue; // 加速度（水色）
             loggerGyroAngle.Color = Colors.Orange;   // ジャイロ（オレンジ）
-            loggerCompAngle.Color = Colors.Green;
+            loggerCompRollAngle.Color = Colors.Green;
+            loggerCompPitchAngle.Color = Colors.Purple;
 
-            loggerGyroX.Axes.YAxis = formsPlot1.Plot.Axes.Right;
+            //loggerGyroX.Axes.YAxis = formsPlot1.Plot.Axes.Right;
 
-            // 左右のY軸ラベルを独立して設定し、色も合わせる
-            formsPlot1.Plot.Axes.Left.Label.Text = "Acceleration (G)";
-            formsPlot1.Plot.Axes.Left.Label.ForeColor = Colors.Blue;
+            //// 左右のY軸ラベルを独立して設定し、色も合わせる
+            //formsPlot1.Plot.Axes.Left.Label.Text = "Acceleration (G)";
+            //formsPlot1.Plot.Axes.Left.Label.ForeColor = Colors.Blue;
 
-            formsPlot1.Plot.Axes.Right.Label.Text = "Gyroscope (deg/s)";
-            formsPlot1.Plot.Axes.Right.Label.ForeColor = Colors.Red;
+            //formsPlot1.Plot.Axes.Right.Label.Text = "Gyroscope (deg/s)";
+            //formsPlot1.Plot.Axes.Right.Label.ForeColor = Colors.Red;
 
             formsPlot1.Plot.Title("MobilityDynamicsSystem - Real-time Data");
             formsPlot1.Plot.Axes.Bottom.Label.Text = "Time";
@@ -81,16 +84,16 @@ namespace MobilityMonitor
                 if (line.StartsWith("$MPU"))
                 {
                     string[] parts = line.Split(',');
-                    if (parts.Length == 10)
+                    if (parts.Length == 11)
                     {
-                        // パース処理 (parts[1]=accel_X, ..., parts[4]=gyro_X)
-                        if (double.TryParse(parts[1], out double accelX) &&
-                            double.TryParse(parts[4], out double gyroX))
-                        {
-                            // DataLoggerにデータを追加（ScottPlot5のDataLoggerはスレッドセーフ）
-                            loggerAccelX.Add(accelX);
-                            loggerGyroX.Add(gyroX);
-                        }
+                        //// パース処理 (parts[1]=accel_X, ..., parts[4]=gyro_X)
+                        //if (double.TryParse(parts[1], out double accelX) &&
+                        //    double.TryParse(parts[4], out double gyroX))
+                        //{
+                        //    // DataLoggerにデータを追加（ScottPlot5のDataLoggerはスレッドセーフ）
+                        //    loggerAccelX.Add(accelX);
+                        //    loggerGyroX.Add(gyroX);
+                        //}
 
                         // 8列目(parts[7])と9列目(parts[8])の角度データを追加
                         if (double.TryParse(parts[7], out double accAngle) &&
@@ -100,8 +103,10 @@ namespace MobilityMonitor
                             loggerGyroAngle.Add(gyroAngle);
                         }
 
-                        if(double.TryParse(parts[9],out double compAngle)){
-                            loggerCompAngle.Add(compAngle);
+                        if (double.TryParse(parts[9],out double compPitchAngle) &&
+                            double.TryParse(parts[10],out double compRollAngle)){
+                            loggerCompPitchAngle.Add(compRollAngle);
+                            loggerCompRollAngle.Add(compPitchAngle);
                         }
                     }
                 }

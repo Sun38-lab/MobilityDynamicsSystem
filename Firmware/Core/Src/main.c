@@ -46,8 +46,8 @@
 #define PI 3.14159265358979f
 #define DT 0.01f
 
-//フィルター関数（ジャイロを96%信用、加速度で4%補正）
-#define ALPHA 0.96f
+//フィルター関数（ジャイロを99%信用、加速度で1%補正）
+#define ALPHA 0.99f
 
 /* USER CODE END PD */
 
@@ -58,28 +58,34 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-// 生データ格納用変数
+// 生データ格納用
 int16_t raw_accel_x, raw_accel_y, raw_accel_z;
 int16_t raw_gyro_x, raw_gyro_y, raw_gyro_z;
 
-// 物理量（G, deg/s）格納用変数
+// 物理量（G, deg/s）格納用
 float accel_x_g, accel_y_g, accel_z_g;
 float gyro_x_dps, gyro_y_dps, gyro_z_dps;
 
-// ジャイロの角度を蓄積（積分）するための変数（ループの外に置くか、グローバル変数にする）
-float gyro_only_roll = 0.0f;
+//　ロール角用
+float gyro_only_roll = 0.0f; // ジャイロの角度蓄積用
+float comp_roll = 0.0f; //　補正フィルター後の角度
 
-//補正フィルター後の角度
-float comp_roll = 0.0f;
+//　ピッチ角用
+float gyro_only_pitch = 0.0f;
+float comp_pitch = 0.0f;
 
-//UART送信用バッファ
+//　誤差記憶用
+float gyro_x_offset = 0.0f;
+float gyro_y_offset = 0.0f;
+
+//　UART送信用バッファ
 char uart_buf[100];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void MRU6050_Read_Physical(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -162,8 +168,7 @@ int main(void) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
 
 	// I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を読み取る
-	HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1,
-			&who_am_i, 1, 100);
+	HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
 
 	if (ret == HAL_OK) {
 		sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
@@ -173,14 +178,48 @@ int main(void) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
 
 	uint8_t pwr_mgmt_data = 0x00;
-	HAL_I2C_Mem_Write(&hi2c1, (uint8_t*) uart_buf, MPU_REG_PWR_MGMT_1, 1,
-			&pwr_mgmt_data, 1, HAL_MAX_DELAY);
+	HAL_I2C_Mem_Write(&hi2c1, (uint8_t*) uart_buf, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
 
 	// 初期化完了のメッセージをTeraTermに送信
 	sprintf(uart_buf, "MPU-6050 Wake Up Complete!\r\n");
+	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+	HAL_Delay(100);
+
+	// --- ここからキャリブレーション開始 ---
+	sprintf(uart_buf, "Calibration Gyro... Please keep it still.\r\n");
+	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+
+	int num_samples = 500;
+	float sum_gyro_x = 0.0f;
+	float sum_gyro_y = 0.0f;
+
+	for (int i = 0; i < num_samples; i++) {
+		MPU6050_Read_Physical(); // 関数を呼び出して最新データを取得
+		sum_gyro_x += gyro_x_dps;
+		sum_gyro_y += gyro_y_dps;
+		HAL_Delay(2); // 2ms待機 (全体で約1秒間の計測)
+	}
+
+	// 平均値をオフセット（初期ズレ）として保存
+	gyro_x_offset = sum_gyro_x / num_samples;
+	gyro_y_offset = sum_gyro_y / num_samples;
+
+	MPU6050_Read_Physical(); // 現在の重力方向を1回読み取る
+
+	//ロール角
+	float initial_roll = atan2f(accel_y_g, accel_z_g) * (180.0f / PI);
+	// 変数のスタート地点を「現在の本当の角度」に合わせる
+	gyro_only_roll = initial_roll;
+	comp_roll = initial_roll;
+
+	//ピッチ角
+	float initial_pitch = atan2f(-accel_x_g, sqrtf(accel_y_g * accel_y_g + accel_z_g * accel_z_g)) * (180.0f / PI);
+	gyro_only_pitch = initial_pitch;
+	comp_pitch = initial_pitch;
+
+	sprintf(uart_buf, "Calibration Done! Offset X:%.2f, Y:%.2f\r\n", gyro_x_offset, gyro_y_offset);
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf),
 	HAL_MAX_DELAY);
-	HAL_Delay(100);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -188,68 +227,33 @@ int main(void) {
 
 	while (1) {
 
-		// --- 2. センサーデータの連続読み取り ---
-		uint8_t data_buffer[14];
+		// データの取得と補正
+		MPU6050_Read_Physical();
+		gyro_x_dps -= gyro_x_offset;
+		gyro_y_dps -= gyro_y_offset;
 
-		// ACCEL_XOUT_H (0x3B) から14バイト連続で読み出し
-		// 構成: Accel(6) + Temp(2) + Gyro(6)
-		HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1,
-				data_buffer, 14, HAL_MAX_DELAY);
-
-		// 上位ビットと下位ビットを結合して16bitの符号付き整数に変換
-		raw_accel_x = (int16_t) (data_buffer[0] << 8 | data_buffer[1]);
-		raw_accel_y = (int16_t) (data_buffer[2] << 8 | data_buffer[3]);
-		raw_accel_z = (int16_t) (data_buffer[4] << 8 | data_buffer[5]);
-
-		// data_buffer[6], [7] は温度データなので今回はスキップ
-		raw_gyro_x = (int16_t) (data_buffer[8] << 8 | data_buffer[9]);
-		raw_gyro_y = (int16_t) (data_buffer[10] << 8 | data_buffer[11]);
-		raw_gyro_z = (int16_t) (data_buffer[12] << 8 | data_buffer[13]);
-
-		// --- 3. 生データから物理量への変換 ---
-		// MPU-6050のデフォルト設定: 加速度 ±2g (1g = 16384LSB), ジャイロ ±250deg/s (1deg/s = 131LSB)
-		accel_x_g = (float) raw_accel_x / 16384.0f;
-		accel_y_g = (float) raw_accel_y / 16384.0f;
-		accel_z_g = (float) raw_accel_z / 16384.0f;
-
-		gyro_x_dps = (float) raw_gyro_x / 131.0f;
-		gyro_y_dps = (float) raw_gyro_y / 131.0f;
-		gyro_z_dps = (float) raw_gyro_z / 131.0f;
-
-		// 1. 加速度センサーのみで求めたロール角（単位：度）
-		// atan2fで角度（ラジアン）を求め、(180 / PI) を掛けて「度(deg)」に変換します
+		// ロール角の計算
 		float acc_only_roll = atan2f(accel_y_g, accel_z_g) * (180.0f / PI);
-
-		// 2. ジャイロセンサーのみで求めたロール角（単位：度）
-		// 前回の角度に、今回の角速度(deg/s) × 時間(s) を足し合わせます（積分）
 		gyro_only_roll += gyro_x_dps * DT;
+		comp_roll = ALPHA * (comp_roll + gyro_x_dps * DT) + (1.0f - ALPHA) * acc_only_roll;
 
-		// 補正フィルター
-		//　(全壊の角度 + ジャイロの変動量)にALPHAをかけ、加速度の角度で残りを補正
-		comp_roll = ALPHA * (comp_roll + gyro_x_dps * DT)
-				+ (1.0f - ALPHA) * acc_only_roll;
+		// ピッチ角の計算
+		float acc_only_pitch = atan2f(-accel_x_g, sqrtf(accel_y_g * accel_y_g + accel_z_g * accel_z_g)) * (180.0f / PI);
+		gyro_only_pitch += gyro_y_dps * DT;
+		comp_pitch = ALPHA * (comp_pitch + gyro_y_dps * DT) + (1.0f - ALPHA) * acc_only_pitch;
 
-		// --- UART出力（C#でのパースを意識したフォーマット） ---
-//		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g,
-//				accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps);
+		// UART送信
+		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps, acc_only_roll, gyro_only_roll, comp_roll, comp_pitch);
+		HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
 
-		sprintf(uart_buf,
-				"$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
-				accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps,
-				gyro_z_dps, acc_only_roll, gyro_only_roll, comp_roll);
-
-		HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf),
-		HAL_MAX_DELAY);
-
-		// 100ms周期（10Hz）でサンプリング
-		HAL_Delay(100);
+		// 待機処理（※後述のワンポイントアドバイス参照）
+		HAL_Delay(10);
 
 		/* USER CODE END WHILE */
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5); // PA5の出力を反転
-		HAL_Delay(500);                        // 500ミリ秒待機
 		/* USER CODE BEGIN 3 */
+
+		/* USER CODE END 3 */
 	}
-	/* USER CODE END 3 */
 }
 
 /**
@@ -283,8 +287,7 @@ void SystemClock_Config(void) {
 
 	/** Initializes the CPU, AHB and APB buses clocks
 	 */
-	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
@@ -296,6 +299,27 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+void MPU6050_Read_Physical(void) {
+	uint8_t data_buffer[14];
+
+	// ACCEL_XOUT_H (0x38)から14バイト連続で呼び出し
+	HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1, data_buffer, 14, HAL_MAX_DELAY);
+
+	//生データへ変換
+	raw_accel_x = (int16_t) (data_buffer[0] << 8 | data_buffer[1]);
+	raw_accel_y = (int16_t) (data_buffer[2] << 8 | data_buffer[3]);
+	raw_accel_z = (int16_t) (data_buffer[4] << 8 | data_buffer[5]);
+	raw_gyro_x = (int16_t) (data_buffer[8] << 8 | data_buffer[9]);
+	raw_gyro_y = (int16_t) (data_buffer[10] << 8 | data_buffer[11]);
+	raw_gyro_z = (int16_t) (data_buffer[12] << 8 | data_buffer[13]);
+
+	accel_x_g = (float) raw_accel_x / 16384.0f;
+	accel_y_g = (float) raw_accel_y / 16384.0f;
+	accel_z_g = (float) raw_accel_z / 16384.0f;
+	gyro_x_dps = (float) raw_gyro_x / 131.0f;
+	gyro_y_dps = (float) raw_gyro_y / 131.0f;
+	gyro_z_dps = (float) raw_gyro_z / 131.0f;
+}
 
 /* USER CODE END 4 */
 
