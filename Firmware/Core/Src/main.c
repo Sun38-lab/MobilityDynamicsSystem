@@ -46,6 +46,9 @@
 #define PI 3.14159265358979f
 #define DT 0.01f
 
+//フィルター関数（ジャイロを96%信用、加速度で4%補正）
+#define ALPHA 0.96f
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -65,6 +68,9 @@ float gyro_x_dps, gyro_y_dps, gyro_z_dps;
 
 // ジャイロの角度を蓄積（積分）するための変数（ループの外に置くか、グローバル変数にする）
 float gyro_only_roll = 0.0f;
+
+//補正フィルター後の角度
+float comp_roll = 0.0f;
 
 //UART送信用バッファ
 char uart_buf[100];
@@ -196,7 +202,6 @@ int main(void) {
 		raw_accel_z = (int16_t) (data_buffer[4] << 8 | data_buffer[5]);
 
 		// data_buffer[6], [7] は温度データなので今回はスキップ
-
 		raw_gyro_x = (int16_t) (data_buffer[8] << 8 | data_buffer[9]);
 		raw_gyro_y = (int16_t) (data_buffer[10] << 8 | data_buffer[11]);
 		raw_gyro_z = (int16_t) (data_buffer[12] << 8 | data_buffer[13]);
@@ -219,13 +224,19 @@ int main(void) {
 		// 前回の角度に、今回の角速度(deg/s) × 時間(s) を足し合わせます（積分）
 		gyro_only_roll += gyro_x_dps * DT;
 
+		// 補正フィルター
+		//　(全壊の角度 + ジャイロの変動量)にALPHAをかけ、加速度の角度で残りを補正
+		comp_roll = ALPHA * (comp_roll + gyro_x_dps * DT)
+				+ (1.0f - ALPHA) * acc_only_roll;
+
 		// --- UART出力（C#でのパースを意識したフォーマット） ---
 //		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g,
 //				accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps);
 
-		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
+		sprintf(uart_buf,
+				"$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
 				accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps,
-				gyro_z_dps, acc_only_roll, gyro_only_roll);
+				gyro_z_dps, acc_only_roll, gyro_only_roll, comp_roll);
 
 		HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf),
 		HAL_MAX_DELAY);

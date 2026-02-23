@@ -12,6 +12,10 @@ namespace MobilityMonitor
         private DataLogger loggerAccelX;
         private DataLogger loggerGyroX;
 
+        private DataLogger loggerAccAngle; //角速度からの角度
+        private DataLogger loggerGyroAngle; //加速度からの角度
+        private DataLogger loggerCompAngle; //補正後の角度
+
         public MainForm()
         {
             InitializeComponent();
@@ -23,11 +27,16 @@ namespace MobilityMonitor
         {
             loggerAccelX = formsPlot1.Plot.Add.DataLogger();
             loggerGyroX = formsPlot1.Plot.Add.DataLogger();
+            loggerAccAngle = formsPlot1.Plot.Add.DataLogger();
+            loggerGyroAngle = formsPlot1.Plot.Add.DataLogger();
+            loggerCompAngle = formsPlot1.Plot.Add.DataLogger();
 
             loggerAccelX.Color = Colors.Blue;
             loggerGyroX.Color = Colors.Red;
+            loggerAccAngle.Color = Colors.LightBlue; // 加速度（水色）
+            loggerGyroAngle.Color = Colors.Orange;   // ジャイロ（オレンジ）
+            loggerCompAngle.Color = Colors.Green;
 
-            // ジャイロ側のデータを右側のY軸(Right Axis)に紐付ける
             loggerGyroX.Axes.YAxis = formsPlot1.Plot.Axes.Right;
 
             // 左右のY軸ラベルを独立して設定し、色も合わせる
@@ -72,7 +81,7 @@ namespace MobilityMonitor
                 if (line.StartsWith("$MPU"))
                 {
                     string[] parts = line.Split(',');
-                    if (parts.Length == 7)
+                    if (parts.Length == 10)
                     {
                         // パース処理 (parts[1]=accel_X, ..., parts[4]=gyro_X)
                         if (double.TryParse(parts[1], out double accelX) &&
@@ -81,6 +90,18 @@ namespace MobilityMonitor
                             // DataLoggerにデータを追加（ScottPlot5のDataLoggerはスレッドセーフ）
                             loggerAccelX.Add(accelX);
                             loggerGyroX.Add(gyroX);
+                        }
+
+                        // 8列目(parts[7])と9列目(parts[8])の角度データを追加
+                        if (double.TryParse(parts[7], out double accAngle) &&
+                            double.TryParse(parts[8], out double gyroAngle))
+                        {
+                            loggerAccAngle.Add(accAngle);
+                            loggerGyroAngle.Add(gyroAngle);
+                        }
+
+                        if(double.TryParse(parts[9],out double compAngle)){
+                            loggerCompAngle.Add(compAngle);
                         }
                     }
                 }
