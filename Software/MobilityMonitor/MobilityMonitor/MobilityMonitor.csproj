@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="ScottPlot.WinForms" Version="5.1.57" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.3" />
   </ItemGroup>
 
 </Project>
