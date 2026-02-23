@@ -1,6 +1,6 @@
-﻿namespace MobilityMonitor
+namespace MobilityMonitor
 {
-    partial class Form1
+    partial class MainForm
     {
         /// <summary>
         ///  Required designer variable.
@@ -28,12 +28,30 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.components = new System.ComponentModel.Container();
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Text = "Form1";
+            formsPlot1 = new ScottPlot.WinForms.FormsPlot();
+            SuspendLayout();
+            // 
+            // formsPlot1
+            // 
+            formsPlot1.DisplayScale = 1F;
+            formsPlot1.Location = new Point(154, 80);
+            formsPlot1.Name = "formsPlot1";
+            formsPlot1.Size = new Size(498, 283);
+            formsPlot1.TabIndex = 0;
+            // 
+            // MobilityDynamicsDashboard
+            // 
+            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
+            ClientSize = new Size(800, 450);
+            Controls.Add(formsPlot1);
+            Name = "MobilityDynamicsDashboard";
+            Text = "MobilityDynamicsDashboard";
+            ResumeLayout(false);
         }
 
         #endregion
+
+        private ScottPlot.WinForms.FormsPlot formsPlot1;
     }
 }
