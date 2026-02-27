@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "i2c.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -57,6 +58,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
 // 生データ格納用
 int16_t raw_accel_x, raw_accel_y, raw_accel_z;
@@ -80,12 +82,14 @@ float gyro_y_offset = 0.0f;
 
 //　UART送信用バッファ
 char uart_buf[100];
+
+volatile uint8_t timer_10ms_flag;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void MRU6050_Read_Physical(void);
+void MPU6050_Read_Physical(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -123,6 +127,7 @@ int main(void) {
 	MX_GPIO_Init();
 	MX_I2C1_Init();
 	MX_USART2_UART_Init();
+	MX_TIM3_Init();
 	/* USER CODE BEGIN 2 */
 	char uart_buf[70];
 	uint8_t who_am_i = 0;
@@ -178,9 +183,9 @@ int main(void) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
 
 	uint8_t pwr_mgmt_data = 0x00;
-	HAL_I2C_Mem_Write(&hi2c1, (uint8_t*) uart_buf, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
+	HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
 
-	// 初期化完了のメッセージをTeraTermに送信
+	// 初期化完了のメッセージをTeraTermに送信(sprintfで文字を上書き、Taransmitで送信)
 	sprintf(uart_buf, "MPU-6050 Wake Up Complete!\r\n");
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
 	HAL_Delay(100);
@@ -220,40 +225,47 @@ int main(void) {
 	sprintf(uart_buf, "Calibration Done! Offset X:%.2f, Y:%.2f\r\n", gyro_x_offset, gyro_y_offset);
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf),
 	HAL_MAX_DELAY);
+
+	HAL_TIM_Base_Start_IT(&htim3);
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 
 	while (1) {
+		// 10msタイマー割り込みが発生したかチェック
+		if (timer_10ms_flag == 1) {
+			timer_10ms_flag = 0; // フラグを下ろす
+			// データの取得と補正
+			MPU6050_Read_Physical();
+			gyro_x_dps -= gyro_x_offset;
+			gyro_y_dps -= gyro_y_offset;
 
-		// データの取得と補正
-		MPU6050_Read_Physical();
-		gyro_x_dps -= gyro_x_offset;
-		gyro_y_dps -= gyro_y_offset;
+			// ロール角の計算
+			float acc_only_roll = atan2f(accel_y_g, accel_z_g) * (180.0f / PI);
+			gyro_only_roll += gyro_x_dps * DT;
+			comp_roll = ALPHA * (comp_roll + gyro_x_dps * DT) + (1.0f - ALPHA) * acc_only_roll;
 
-		// ロール角の計算
-		float acc_only_roll = atan2f(accel_y_g, accel_z_g) * (180.0f / PI);
-		gyro_only_roll += gyro_x_dps * DT;
-		comp_roll = ALPHA * (comp_roll + gyro_x_dps * DT) + (1.0f - ALPHA) * acc_only_roll;
+			// ピッチ角の計算
+			float acc_only_pitch = atan2f(-accel_x_g, sqrtf(accel_y_g * accel_y_g + accel_z_g * accel_z_g))
+					* (180.0f / PI);
+			gyro_only_pitch += gyro_y_dps * DT;
+			comp_pitch = ALPHA * (comp_pitch + gyro_y_dps * DT) + (1.0f - ALPHA) * acc_only_pitch;
 
-		// ピッチ角の計算
-		float acc_only_pitch = atan2f(-accel_x_g, sqrtf(accel_y_g * accel_y_g + accel_z_g * accel_z_g)) * (180.0f / PI);
-		gyro_only_pitch += gyro_y_dps * DT;
-		comp_pitch = ALPHA * (comp_pitch + gyro_y_dps * DT) + (1.0f - ALPHA) * acc_only_pitch;
-
-		// UART送信
-		sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps, acc_only_roll, gyro_only_roll, comp_roll, comp_pitch);
-		HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
-
-		// 待機処理（※後述のワンポイントアドバイス参照）
-		HAL_Delay(10);
-
-		/* USER CODE END WHILE */
-		/* USER CODE BEGIN 3 */
-
-		/* USER CODE END 3 */
+			// UART送信
+			sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", accel_x_g, accel_y_g, accel_z_g, gyro_x_dps, gyro_y_dps, gyro_z_dps, acc_only_roll, gyro_only_roll, comp_roll, comp_pitch);
+			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+		}
 	}
+//		// 待機処理（※後述のワンポイントアドバイス参照）
+//		HAL_Delay(10);
+
+	/* USER CODE END WHILE */
+
+	/* USER CODE BEGIN 3 */
+
+	/* USER CODE END 3 */
 }
 
 /**
@@ -321,6 +333,13 @@ void MPU6050_Read_Physical(void) {
 	gyro_z_dps = (float) raw_gyro_z / 131.0f;
 }
 
+// タイマー割り込みが発生したときに呼ばれるコールバック関数
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	// TIM3の割り込みかどうかを確認
+	if (htim->Instance == TIM3) {
+		timer_10ms_flag = 1; // 10ms経過フラグを立てる
+	}
+}
 /* USER CODE END 4 */
 
 /**
