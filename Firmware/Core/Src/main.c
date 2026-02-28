@@ -60,6 +60,16 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+typedef enum {
+	STATE_INIT,			//　初期化
+	STATE_CALIBRATION,	//　センサーのキャリブレーション
+	STATE_NORMAL,		// 通常動作
+	STATE_ERROR			//　エラー状態
+} SystemState_t;
+
+// 現在の状態を保持
+SystemState_t current_state = STATE_INIT;
+
 typedef struct {
 	// 生データ
 	int16_t raw_accel_x, raw_accel_y, raw_accel_z;
@@ -94,7 +104,7 @@ volatile uint8_t timer_10ms_flag;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-void MPU6050_Read_Physical(MPU6050_Data_t *sensor);
+HAL_StatusTypeDef MPU6050_Read_Physical(MPU6050_Data_t *sensor);
 void MPU6050_Calibrate(MPU6050_Data_t *sensor);
 void MPU6050_Calculate_Attitude(MPU6050_Data_t *sensor);
 
@@ -140,104 +150,152 @@ int main(void) {
 	MPU6050_Data_t sensor_data = { 0 };
 	char uart_buf[70];
 	uint8_t who_am_i = 0;
-
-	sprintf(uart_buf, "\r\n--- Executing I2C Bus Recovery ---\r\n");
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
-
-	// 1. PB8(SCL)とPB9(SDA)を一時的に「手動スイッチ(GPIO出力)」に変更
-	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
-	GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD; // オープンドレイン出力
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	// 2. 通信終了(STOPコンディション)の波形を強制的に手動で作り出す
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // SDA Low
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); // SCL Low
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
-	HAL_Delay(1);
-
-	// 3. PB8とPB9を再び「I2C通信ピン」に戻す (STM32F401のI2C1はAF4)
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	// 4. I2C回路のハードウェアリセットと再初期化
-	__HAL_RCC_I2C1_FORCE_RESET();
-	HAL_Delay(2);
-	__HAL_RCC_I2C1_RELEASE_RESET();
-	HAL_I2C_Init(&hi2c1);
-
-	// --- ここから本来のWHO_AM_I読み取り処理 ---
-	sprintf(uart_buf, "Checking MPU-6050 WHO_AM_I...\r\n");
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
-
-	// I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を読み取る
-	HAL_StatusTypeDef ret = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
-
-	if (ret == HAL_OK) {
-		sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
-	} else {
-		sprintf(uart_buf, "Failed. Error Code = %d\r\n", ret);
-	}
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
-
 	uint8_t pwr_mgmt_data = 0x00;
-	HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
-
-	// 初期化完了のメッセージをTeraTermに送信(sprintfで文字を上書き、Taransmitで送信)
-	sprintf(uart_buf, "MPU-6050 Wake Up Complete!\r\n");
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
-	HAL_Delay(100);
-
-	// キャリブレーションの実行（アドレスを渡す）
-	sprintf(uart_buf, "Calibration Gyro... Please keep it still.\r\n");
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
-
-	MPU6050_Calibrate(&sensor_data);
-
-	sprintf(uart_buf, "Calibration Done! Offset X:%.2f, Y:%.2f\r\n", sensor_data.gyro_x_offset, sensor_data.gyro_y_offset);
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
-
-	HAL_TIM_Base_Start_IT(&htim3);
-
+	HAL_StatusTypeDef status;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-
 	while (1) {
-		// 10msタイマー割り込みが発生したかチェック
-		if (timer_10ms_flag == 1) {
-			timer_10ms_flag = 0; // フラグを下ろす
-			// データの取得と補正
-			MPU6050_Read_Physical(&sensor_data);
-			MPU6050_Calculate_Attitude(&sensor_data);
+		switch (current_state) {
 
-			// UART送信
-			sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n",
-								sensor_data.accel_x_g, sensor_data.accel_y_g, sensor_data.accel_z_g,
-								sensor_data.gyro_x_dps, sensor_data.gyro_y_dps, sensor_data.gyro_z_dps,
-								sensor_data.acc_only_roll, sensor_data.gyro_only_roll,
-								sensor_data.comp_roll, sensor_data.comp_pitch);
+		case STATE_INIT:
+			// ==========================================
+			// 状態1：初期化 (I2C復旧、MPU6050の起動)
+			// ==========================================
+
+			sprintf(uart_buf, "\r\n--- Executing I2C Bus Recovery ---\r\n");
+			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+			// 1. PB8(SCL)とPB9(SDA)を一時的に「手動スイッチ(GPIO出力)」に変更
+			GPIO_InitTypeDef GPIO_InitStruct = { 0 };
+			GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
+			GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD; // オープンドレイン出力
+			GPIO_InitStruct.Pull = GPIO_NOPULL;
+			GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+			HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+			// 2. 通信終了(STOPコンディション)の波形を強制的に手動で作り出す
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // SDA Low
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); // SCL Low
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
+			HAL_Delay(1);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
+			HAL_Delay(1);
+
+			// 3. PB8とPB9を再び「I2C通信ピン」に戻す (STM32F401のI2C1はAF4)
+			GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
+			GPIO_InitStruct.Pull = GPIO_PULLUP;
+			GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+			HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+			// 4. I2C回路のハードウェアリセットと再初期化
+			__HAL_RCC_I2C1_FORCE_RESET();
+			HAL_Delay(2);
+			__HAL_RCC_I2C1_RELEASE_RESET();
+			HAL_I2C_Init(&hi2c1);
+
+			// --- ここから本来のWHO_AM_I読み取り処理 ---
+			sprintf(uart_buf, "Checking MPU-6050 WHO_AM_I...\r\n");
+			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+			// I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を読み取る
+			status = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
+
+			if (status == HAL_OK && who_am_i == 0x70) {
+				HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
+
+				sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
+				HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+				current_state = STATE_CALIBRATION;
+
+			} else {
+				sprintf(uart_buf, "MPU-6050 Init Failed! Moving to Error State.\r\n");
+				HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+				// 異常時はエラー状態へ
+				current_state = STATE_ERROR;
+			}
+			break;
+
+		case STATE_CALIBRATION:
+			// ==========================================
+			// 状態2：キャブレーション
+			// ==========================================
+
+			// キャリブレーションの実行（アドレスを渡す）
+			sprintf(uart_buf, "Calibration Gyro... Please keep it still.\r\n");
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+
+			MPU6050_Calibrate(&sensor_data);
+
+			sprintf(uart_buf, "Calibration Done! Offset X:%.2f, Y:%.2f\r\n", sensor_data.gyro_x_offset, sensor_data.gyro_y_offset);
+			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+			// タイマー割込み開始
+			HAL_TIM_Base_Start_IT(&htim3);
+
+			// 通常動作状態へ遷移
+			current_state = STATE_NORMAL;
+
+			break;
+
+		case STATE_NORMAL:
+			// ==========================================
+			// 状態3：通常動作 (100Hzでデータ取得・送信)
+			// ==========================================
+
+			// 10msタイマー割り込みが発生したかチェック
+			if (timer_10ms_flag == 1) {
+				timer_10ms_flag = 0; // フラグを下ろす
+
+				// データの取得と補正
+				status = MPU6050_Read_Physical(&sensor_data);
+
+				if (status == HAL_OK) {
+					MPU6050_Calculate_Attitude(&sensor_data);
+					sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", sensor_data.accel_x_g, sensor_data.accel_y_g, sensor_data.accel_z_g, sensor_data.gyro_x_dps, sensor_data.gyro_y_dps, sensor_data.gyro_z_dps, sensor_data.acc_only_roll, sensor_data.gyro_only_roll, sensor_data.comp_roll, sensor_data.comp_pitch);
+					HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+				} else {
+					// I2C通信で委譲が発生した場合
+					HAL_TIM_Base_Stop_IT(&htim3);
+					current_state = STATE_ERROR;
+				}
+			}
+			break;
+
+		case STATE_ERROR:
+			// ==========================================
+			// 状態4：エラー・フェールセーフ状態
+			// ==========================================
+
+			// 安全のための処理（例：モーターのPWM出力を強制0にする等）
+			sprintf(uart_buf, "SYSTEM ERROR: Sensor Disconnected or I2C Fault.\r\n");
+			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
+
+			// 1秒待機して再初期化を試みる、もしくは無限ループでシステムを安全に停止させる
+			HAL_Delay(1000);
+
+			// current_state = STATE_INIT;
+			break;
+
+		default:
+			current_state = STATE_ERROR;
+			break;
+			/* USER CODE END WHILE */
+
+			/* USER CODE BEGIN 3 */
+
+			/* USER CODE END 3 */
+
 		}
 	}
-
-	/* USER CODE END WHILE */
-
-	/* USER CODE BEGIN 3 */
-
-	/* USER CODE END 3 */
 }
 
 /**
@@ -283,12 +341,20 @@ void SystemClock_Config(void) {
 }
 
 /* USER CODE BEGIN 4 */
+
+
+
 // 物理データの読み取り関数
-void MPU6050_Read_Physical(MPU6050_Data_t *sensor) {
+HAL_StatusTypeDef MPU6050_Read_Physical(MPU6050_Data_t *sensor) {
 	uint8_t data_buffer[14];
 
 	// ACCEL_XOUT_H (0x38)から14バイト連続で呼び出し
-	HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1, data_buffer, 14, HAL_MAX_DELAY);
+	HAL_StatusTypeDef ret =
+			HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1, data_buffer, 14, HAL_MAX_DELAY);
+
+	if (ret != HAL_OK) {
+		return ret;
+	}
 
 	//生データへ変換
 	sensor->raw_accel_x = (int16_t) (data_buffer[0] << 8 | data_buffer[1]);
@@ -304,6 +370,8 @@ void MPU6050_Read_Physical(MPU6050_Data_t *sensor) {
 	sensor->gyro_x_dps = (float) sensor->raw_gyro_x / 131.0f;
 	sensor->gyro_y_dps = (float) sensor->raw_gyro_y / 131.0f;
 	sensor->gyro_z_dps = (float) sensor->raw_gyro_z / 131.0f;
+
+	return HAL_OK;
 }
 
 // キャブレーション関数
@@ -326,7 +394,8 @@ void MPU6050_Calibrate(MPU6050_Data_t *sensor) {
 	// 現在の重力方向を読み取る
 	MPU6050_Read_Physical(sensor);
 	float initial_roll = atan2f(sensor->accel_y_g, sensor->accel_z_g) * (180.0f / PI);
-	float initial_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g + sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
+	float initial_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g
+			+ sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
 
 	// 変数のスタート地点を「現在の本当の角度」に合わせる
 	sensor->gyro_only_roll = initial_roll;
