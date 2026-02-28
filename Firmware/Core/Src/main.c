@@ -27,7 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
-#include <math.h>
+#include "mpu6050.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -37,18 +37,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-// MPU-6050のI2Cアドレス
-#define MPU6050_ADDR 0xD0
-
-//レジスタアドレス
-#define MPU_REG_PWR_MGMT_1 0x68
-#define MPU_REG_ACCEL_XOUT_H 0x3B
-
-#define PI 3.14159265358979f
-#define DT 0.01f
-
-//フィルター関数（ジャイロを99%信用、加速度で1%補正）
-#define ALPHA 0.99f
 
 /* USER CODE END PD */
 
@@ -69,34 +57,7 @@ typedef enum {
 
 // 現在の状態を保持
 SystemState_t current_state = STATE_INIT;
-
-typedef struct {
-	// 生データ
-	int16_t raw_accel_x, raw_accel_y, raw_accel_z;
-	int16_t raw_gyro_x, raw_gyro_y, raw_gyro_z;
-
-	// 物理量（G, deg/s）格納用
-	float accel_x_g, accel_y_g, accel_z_g;
-	float gyro_x_dps, gyro_y_dps, gyro_z_dps;
-
-	//　誤差記憶用
-	float gyro_x_offset;
-	float gyro_y_offset;
-	float gyro_z_offset;
-
-	//　ロール角用
-	float acc_only_roll;
-	float gyro_only_roll; // ジャイロの角度蓄積用
-	float comp_roll; //　補正フィルター後の角度
-
-	//　ピッチ角用
-	float acc_only_pitch;
-	float gyro_only_pitch;
-	float comp_pitch;
-} MPU6050_Data_t;
-
-//　UART送信用バッファ
-char uart_buf[100];
+char uart_buf[100]; //　UART送信用バッファ
 volatile uint8_t timer_10ms_flag;
 
 /* USER CODE END PV */
@@ -104,9 +65,6 @@ volatile uint8_t timer_10ms_flag;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-HAL_StatusTypeDef MPU6050_Read_Physical(MPU6050_Data_t *sensor);
-void MPU6050_Calibrate(MPU6050_Data_t *sensor);
-void MPU6050_Calculate_Attitude(MPU6050_Data_t *sensor);
 
 /* USER CODE END PFP */
 
@@ -167,56 +125,10 @@ int main(void) {
 			sprintf(uart_buf, "\r\n--- Executing I2C Bus Recovery ---\r\n");
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
 
-			// 1. PB8(SCL)とPB9(SDA)を一時的に「手動スイッチ(GPIO出力)」に変更
-			GPIO_InitTypeDef GPIO_InitStruct = { 0 };
-			GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
-			GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD; // オープンドレイン出力
-			GPIO_InitStruct.Pull = GPIO_NOPULL;
-			GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-			HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-			// 2. 通信終了(STOPコンディション)の波形を強制的に手動で作り出す
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
-			HAL_Delay(1);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET); // SDA Low
-			HAL_Delay(1);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET); // SCL Low
-			HAL_Delay(1);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);   // SCL High
-			HAL_Delay(1);
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);   // SDA High
-			HAL_Delay(1);
-
-			// 3. PB8とPB9を再び「I2C通信ピン」に戻す (STM32F401のI2C1はAF4)
-			GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-			GPIO_InitStruct.Pull = GPIO_PULLUP;
-			GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-			HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-			// 4. I2C回路のハードウェアリセットと再初期化
-			__HAL_RCC_I2C1_FORCE_RESET();
-			HAL_Delay(2);
-			__HAL_RCC_I2C1_RELEASE_RESET();
-			HAL_I2C_Init(&hi2c1);
-
-			// --- ここから本来のWHO_AM_I読み取り処理 ---
-			sprintf(uart_buf, "Checking MPU-6050 WHO_AM_I...\r\n");
-			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
-
-			// I2Cアドレス(0x68)の、WHO_AM_Iレジスタ(0x75)を読み取る
-			status = HAL_I2C_Mem_Read(&hi2c1, (0x68 << 1), 0x75, 1, &who_am_i, 1, 100);
-
-			if (status == HAL_OK && who_am_i == 0x70) {
-				HAL_I2C_Mem_Write(&hi2c1, MPU6050_ADDR, MPU_REG_PWR_MGMT_1, 1, &pwr_mgmt_data, 1, HAL_MAX_DELAY);
-
-				sprintf(uart_buf, "Success! WHO_AM_I = 0x%02X\r\n", who_am_i);
-				HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
-
+			if (MPU6050_Init(&hi2c1) == HAL_OK) {
 				current_state = STATE_CALIBRATION;
-
 			} else {
-				sprintf(uart_buf, "MPU-6050 Init Failed! Moving to Error State.\r\n");
+				sprintf(uart_buf, "MPU-6050 Knit Failed! Moving to Error State.\r\n");
 				HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
 
 				// 異常時はエラー状態へ
@@ -233,7 +145,7 @@ int main(void) {
 			sprintf(uart_buf, "Calibration Gyro... Please keep it still.\r\n");
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
 
-			MPU6050_Calibrate(&sensor_data);
+			MPU6050_Calibrate(&hi2c1, &sensor_data);
 
 			sprintf(uart_buf, "Calibration Done! Offset X:%.2f, Y:%.2f\r\n", sensor_data.gyro_x_offset, sensor_data.gyro_y_offset);
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 100);
@@ -255,10 +167,7 @@ int main(void) {
 			if (timer_10ms_flag == 1) {
 				timer_10ms_flag = 0; // フラグを下ろす
 
-				// データの取得と補正
-				status = MPU6050_Read_Physical(&sensor_data);
-
-				if (status == HAL_OK) {
+				if (MPU6050_Read_Physical(&hi2c1, &sensor_data) == HAL_OK) {
 					MPU6050_Calculate_Attitude(&sensor_data);
 					sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", sensor_data.accel_x_g, sensor_data.accel_y_g, sensor_data.accel_z_g, sensor_data.gyro_x_dps, sensor_data.gyro_y_dps, sensor_data.gyro_z_dps, sensor_data.acc_only_roll, sensor_data.gyro_only_roll, sensor_data.comp_roll, sensor_data.comp_pitch);
 					HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
@@ -302,6 +211,7 @@ int main(void) {
  * @brief System Clock Configuration
  * @retval None
  */
+
 void SystemClock_Config(void) {
 	RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
 	RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
@@ -342,93 +252,14 @@ void SystemClock_Config(void) {
 
 /* USER CODE BEGIN 4 */
 
-
-
-// 物理データの読み取り関数
-HAL_StatusTypeDef MPU6050_Read_Physical(MPU6050_Data_t *sensor) {
-	uint8_t data_buffer[14];
-
-	// ACCEL_XOUT_H (0x38)から14バイト連続で呼び出し
-	HAL_StatusTypeDef ret =
-			HAL_I2C_Mem_Read(&hi2c1, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1, data_buffer, 14, HAL_MAX_DELAY);
-
-	if (ret != HAL_OK) {
-		return ret;
-	}
-
-	//生データへ変換
-	sensor->raw_accel_x = (int16_t) (data_buffer[0] << 8 | data_buffer[1]);
-	sensor->raw_accel_y = (int16_t) (data_buffer[2] << 8 | data_buffer[3]);
-	sensor->raw_accel_z = (int16_t) (data_buffer[4] << 8 | data_buffer[5]);
-	sensor->raw_gyro_x = (int16_t) (data_buffer[8] << 8 | data_buffer[9]);
-	sensor->raw_gyro_y = (int16_t) (data_buffer[10] << 8 | data_buffer[11]);
-	sensor->raw_gyro_z = (int16_t) (data_buffer[12] << 8 | data_buffer[13]);
-
-	sensor->accel_x_g = (float) sensor->raw_accel_x / 16384.0f;
-	sensor->accel_y_g = (float) sensor->raw_accel_y / 16384.0f;
-	sensor->accel_z_g = (float) sensor->raw_accel_z / 16384.0f;
-	sensor->gyro_x_dps = (float) sensor->raw_gyro_x / 131.0f;
-	sensor->gyro_y_dps = (float) sensor->raw_gyro_y / 131.0f;
-	sensor->gyro_z_dps = (float) sensor->raw_gyro_z / 131.0f;
-
-	return HAL_OK;
-}
-
-// キャブレーション関数
-void MPU6050_Calibrate(MPU6050_Data_t *sensor) {
-	int num_samples = 500;
-	float sum_gyro_x = 0.0f;
-	float sum_gyro_y = 0.0f;
-
-	for (int i = 0; i < num_samples; i++) {
-		MPU6050_Read_Physical(sensor); // 関数を呼び出して最新データを取得
-		sum_gyro_x += sensor->gyro_x_dps;
-		sum_gyro_y += sensor->gyro_y_dps;
-		HAL_Delay(2); // 2ms待機 (全体で約1秒間の計測)
-	}
-
-	// 平均値をオフセット（初期ズレ）として保存
-	sensor->gyro_x_offset = sum_gyro_x / num_samples;
-	sensor->gyro_y_offset = sum_gyro_y / num_samples;
-
-	// 現在の重力方向を読み取る
-	MPU6050_Read_Physical(sensor);
-	float initial_roll = atan2f(sensor->accel_y_g, sensor->accel_z_g) * (180.0f / PI);
-	float initial_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g
-			+ sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
-
-	// 変数のスタート地点を「現在の本当の角度」に合わせる
-	sensor->gyro_only_roll = initial_roll;
-	sensor->comp_roll = initial_roll;
-	sensor->gyro_only_pitch = initial_pitch;
-	sensor->comp_pitch = initial_pitch;
-}
-
-// 補正フィルター関数
-void MPU6050_Calculate_Attitude(MPU6050_Data_t *sensor) {
-	//オフセットを引く
-	sensor->gyro_x_dps -= sensor->gyro_x_offset;
-	sensor->gyro_y_dps -= sensor->gyro_y_offset;
-
-	// ロール角の計算
-	float acc_only_roll = atan2f(sensor->accel_y_g, sensor->accel_z_g) * (180.0f / PI);
-	sensor->gyro_only_roll += sensor->gyro_x_dps * DT;
-	sensor->comp_roll = ALPHA * (sensor->comp_roll + sensor->gyro_x_dps * DT) + (1.0f - ALPHA) * acc_only_roll;
-
-	// ピッチ角の計算
-	float acc_only_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g
-			+ sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
-	sensor->gyro_only_pitch += sensor->gyro_y_dps * DT;
-	sensor->comp_pitch = ALPHA * (sensor->comp_pitch + sensor->gyro_y_dps * DT) + (1.0f - ALPHA) * acc_only_pitch;
-}
-
 // タイマー割り込みが発生したときに呼ばれるコールバック関数
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	// TIM3の割り込みかどうかを確認
+// TIM3の割り込みかどうかを確認
 	if (htim->Instance == TIM3) {
 		timer_10ms_flag = 1; // 10ms経過フラグを立てる
 	}
 }
+
 /* USER CODE END 4 */
 
 /**
