@@ -36,7 +36,12 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+typedef enum {
+	STATE_INIT,			//　初期化
+	STATE_CALIBRATION,	//　センサーのキャリブレーション
+	STATE_NORMAL,		// 通常動作
+	STATE_ERROR			//　エラー状態
+} SystemState_t;
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -73,7 +78,7 @@ void Error_Handler(void);
 #define SWO_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+extern SystemState_t current_state;
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

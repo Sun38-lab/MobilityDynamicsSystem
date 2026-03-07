@@ -1,6 +1,14 @@
 #include "mpu6050.h"
 #include "math.h"
 
+// mpu6050.c の上の方、もしくは関数の直前にダミー遅延関数を作る
+// （コンパイラの最適化で消されないように volatile をつけます）
+void DummyDelay(void) {
+	for (volatile int i = 0; i < 1000; i++) {
+		// 何もしない（数マイクロ秒〜数十マイクロ秒の時間を稼ぐ）
+	}
+}
+
 HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c) {
 	// 1. PB8(SCL)とPB9(SDA)を一時的に「手動スイッチ(GPIO出力)」に変更
 	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
@@ -55,7 +63,7 @@ HAL_StatusTypeDef MPU6050_Init(I2C_HandleTypeDef *hi2c) {
 HAL_StatusTypeDef MPU6050_Read_Physical(I2C_HandleTypeDef *hi2c, MPU6050_Data_t *sensor) {
 	uint8_t data_buffer[14];
 
-// ACCEL_XOUT_H (0x38)から14バイト連続で呼び出し
+	// ACCEL_XOUT_H (0x38)から14バイト連続で呼び出し
 	HAL_StatusTypeDef ret =
 			HAL_I2C_Mem_Read(hi2c, MPU6050_ADDR, MPU_REG_ACCEL_XOUT_H, 1, data_buffer, 14, HAL_MAX_DELAY);
 
@@ -63,7 +71,7 @@ HAL_StatusTypeDef MPU6050_Read_Physical(I2C_HandleTypeDef *hi2c, MPU6050_Data_t 
 		return ret;
 	}
 
-//生データへ変換
+	//生データへ変換
 	sensor->raw_accel_x = (int16_t) (data_buffer[0] << 8 | data_buffer[1]);
 	sensor->raw_accel_y = (int16_t) (data_buffer[2] << 8 | data_buffer[3]);
 	sensor->raw_accel_z = (int16_t) (data_buffer[4] << 8 | data_buffer[5]);
@@ -94,17 +102,17 @@ void MPU6050_Calibrate(I2C_HandleTypeDef *hi2c, MPU6050_Data_t *sensor) {
 		HAL_Delay(2); // 2ms待機 (全体で約1秒間の計測)
 	}
 
-// 平均値をオフセット（初期ズレ）として保存
+	// 平均値をオフセット（初期ズレ）として保存
 	sensor->gyro_x_offset = sum_gyro_x / num_samples;
 	sensor->gyro_y_offset = sum_gyro_y / num_samples;
 
-// 現在の重力方向を読み取る
+	// 現在の重力方向を読み取る
 	MPU6050_Read_Physical(hi2c, sensor);
 	float initial_roll = atan2f(sensor->accel_y_g, sensor->accel_z_g) * (180.0f / PI);
 	float initial_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g
 			+ sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
 
-// 変数のスタート地点を「現在の本当の角度」に合わせる
+	// 変数のスタート地点を「現在の本当の角度」に合わせる
 	sensor->gyro_only_roll = initial_roll;
 	sensor->comp_roll = initial_roll;
 	sensor->gyro_only_pitch = initial_pitch;
@@ -113,16 +121,16 @@ void MPU6050_Calibrate(I2C_HandleTypeDef *hi2c, MPU6050_Data_t *sensor) {
 
 // 補正フィルター関数
 void MPU6050_Calculate_Attitude(MPU6050_Data_t *sensor) {
-//オフセットを引く
+	//オフセットを引く
 	sensor->gyro_x_dps -= sensor->gyro_x_offset;
 	sensor->gyro_y_dps -= sensor->gyro_y_offset;
 
-// ロール角の計算
+	// ロール角の計算
 	sensor->acc_only_roll = atan2f(sensor->accel_y_g, sensor->accel_z_g) * (180.0f / PI);
 	sensor->gyro_only_roll += sensor->gyro_x_dps * DT;
 	sensor->comp_roll = ALPHA * (sensor->comp_roll + sensor->gyro_x_dps * DT) + (1.0f - ALPHA) * sensor->acc_only_roll;
 
-// ピッチ角の計算
+	// ピッチ角の計算
 	sensor->acc_only_pitch = atan2f(-sensor->accel_x_g, sqrtf(sensor->accel_y_g * sensor->accel_y_g
 			+ sensor->accel_z_g * sensor->accel_z_g)) * (180.0f / PI);
 	sensor->gyro_only_pitch += sensor->gyro_y_dps * DT;
