@@ -125,6 +125,14 @@ int main(void)
 		current_state = STATE_ERROR;
 	}
 
+	// PWM出力開始
+	HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_1);
+
+	// サーボを0度（中央：　1500μs）に設定するテスト
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1520);
+	HAL_Delay(1000);
+
+
   /* USER CODE END 2 */
 
   /* Init scheduler */

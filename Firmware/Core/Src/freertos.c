@@ -30,6 +30,7 @@
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>
+#include  "tim.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,23 +54,15 @@ extern MPU6050_Data_t global_sensor_data;
 /* USER CODE END Variables */
 /* Definitions for SensorTaskHandl */
 osThreadId_t SensorTaskHandlHandle;
-const osThreadAttr_t SensorTaskHandl_attributes = {
-  .name = "SensorTaskHandl",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityHigh,
-};
+const osThreadAttr_t SensorTaskHandl_attributes = { .name = "SensorTaskHandl", .stack_size = 512 * 4, .priority =
+		(osPriority_t) osPriorityHigh, };
 /* Definitions for UartTask */
 osThreadId_t UartTaskHandle;
-const osThreadAttr_t UartTask_attributes = {
-  .name = "UartTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
+const osThreadAttr_t UartTask_attributes = { .name = "UartTask", .stack_size = 512 * 4, .priority =
+		(osPriority_t) osPriorityNormal, };
 /* Definitions for SensorDataQueue */
 osMessageQueueId_t SensorDataQueueHandle;
-const osMessageQueueAttr_t SensorDataQueue_attributes = {
-  .name = "SensorDataQueue"
-};
+const osMessageQueueAttr_t SensorDataQueue_attributes = { .name = "SensorDataQueue" };
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -82,49 +75,49 @@ void StartUartTask(void *argument);
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /**
-  * @brief  FreeRTOS initialization
-  * @param  None
-  * @retval None
-  */
+ * @brief  FreeRTOS initialization
+ * @param  None
+ * @retval None
+ */
 void MX_FREERTOS_Init(void) {
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* USER CODE BEGIN RTOS_MUTEX */
+	/* USER CODE BEGIN RTOS_MUTEX */
 	/* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
+	/* USER CODE END RTOS_MUTEX */
 
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
+	/* USER CODE BEGIN RTOS_SEMAPHORES */
 	/* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
+	/* USER CODE END RTOS_SEMAPHORES */
 
-  /* USER CODE BEGIN RTOS_TIMERS */
+	/* USER CODE BEGIN RTOS_TIMERS */
 	/* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
+	/* USER CODE END RTOS_TIMERS */
 
-  /* Create the queue(s) */
-  /* creation of SensorDataQueue */
-  SensorDataQueueHandle = osMessageQueueNew (16, 128, &SensorDataQueue_attributes);
+	/* Create the queue(s) */
+	/* creation of SensorDataQueue */
+	SensorDataQueueHandle = osMessageQueueNew(16, 128, &SensorDataQueue_attributes);
 
-  /* USER CODE BEGIN RTOS_QUEUES */
+	/* USER CODE BEGIN RTOS_QUEUES */
 	/* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
+	/* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* creation of SensorTaskHandl */
-  SensorTaskHandlHandle = osThreadNew(StartSensorTask, NULL, &SensorTaskHandl_attributes);
+	/* Create the thread(s) */
+	/* creation of SensorTaskHandl */
+	SensorTaskHandlHandle = osThreadNew(StartSensorTask, NULL, &SensorTaskHandl_attributes);
 
-  /* creation of UartTask */
-  UartTaskHandle = osThreadNew(StartUartTask, NULL, &UartTask_attributes);
+	/* creation of UartTask */
+	UartTaskHandle = osThreadNew(StartUartTask, NULL, &UartTask_attributes);
 
-  /* USER CODE BEGIN RTOS_THREADS */
+	/* USER CODE BEGIN RTOS_THREADS */
 	/* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
+	/* USER CODE END RTOS_THREADS */
 
-  /* USER CODE BEGIN RTOS_EVENTS */
+	/* USER CODE BEGIN RTOS_EVENTS */
 	/* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
+	/* USER CODE END RTOS_EVENTS */
 
 }
 
@@ -135,9 +128,8 @@ void MX_FREERTOS_Init(void) {
  * @retval None
  */
 /* USER CODE END Header_StartSensorTask */
-void StartSensorTask(void *argument)
-{
-  /* USER CODE BEGIN StartSensorTask */
+void StartSensorTask(void *argument) {
+	/* USER CODE BEGIN StartSensorTask */
 	/* Infinite loop */
 	// {0}で空にするのではなく、キャリブレーション済みのデータを丸ごとコピーして引き継ぐ！
 	MPU6050_Data_t local_sensor_data = global_sensor_data;
@@ -162,7 +154,7 @@ void StartSensorTask(void *argument)
 		tick_update += tick_delay;
 		osDelayUntil(tick_update);
 	}
-  /* USER CODE END StartSensorTask */
+	/* USER CODE END StartSensorTask */
 }
 
 /* USER CODE BEGIN Header_StartUartTask */
@@ -172,23 +164,62 @@ void StartSensorTask(void *argument)
  * @retval None
  */
 /* USER CODE END Header_StartUartTask */
-void StartUartTask(void *argument)
-{
-  /* USER CODE BEGIN StartUartTask */
+void StartUartTask(void *argument) {
+	/* USER CODE BEGIN StartUartTask */
 	/* Infinite loop */
 	/* USER CODE BEGIN StartUartTask */
 	MPU6050_Data_t received_data;
 	char uart_buf[120];
 
+	// PIDゲイン
+	volatile float Kp = 15.0f;
+	volatile float Ki = 0.0f;
+	volatile float Kd = 0.0f;
+
+	volatile float integral = 0.0f;
+	volatile float prev_error = 0.0f;
+	volatile float target_pitch = 0.0f;
+
+	volatile int base_pwm = 1520;
+
+	if (osMessageQueueGet(SensorDataQueueHandle, &received_data, NULL, osWaitForever) == osOK) {
+		target_pitch = received_data.comp_pitch;
+		// これで、もし起動時に-5.9度だったら、目標値も-5.9度になる！
+	}
+
 	for (;;) {
 		// Queueにデータが来るまで無限に待機 (CPUを休ませる)
 		if (osMessageQueueGet(SensorDataQueueHandle, &received_data, NULL, osWaitForever) == osOK) {
-			sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", received_data.accel_x_g, received_data.accel_y_g, received_data.accel_z_g, received_data.gyro_x_dps, received_data.gyro_y_dps, received_data.gyro_z_dps, received_data.acc_only_roll, received_data.gyro_only_roll, received_data.comp_roll, received_data.comp_pitch);
 
+			// 偏差（エラー）の計算
+			float error = target_pitch - received_data.comp_pitch;
+
+			// 積分と微分の計算（DTは0.01ｓ＝100Hz）
+			integral += error * 0.01f;
+			float derivative = (error - prev_error) / 0.01f;
+
+			// PID出力（パルス幅の補正量）計算
+			float output = (Kp * error) + (Ki * integral) + (Kd * derivative);
+			prev_error = error; //次回用に保持
+
+			// ベースとなるパルス幅に出力を加算（モータの向きに合わせて加算か減算か調整）
+			int pulse_width = base_pwm - (int) output;
+
+			// サーボの可動範囲(500μs~2400μs)を超えないように
+			if (pulse_width > 2400)
+				pulse_width = 2400;
+			if (pulse_width < 600)
+				pulse_width = 600;
+
+			// PWM出力更新
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_width);
+
+			// UART送信
+			sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", received_data.accel_x_g, received_data.accel_y_g, received_data.accel_z_g, received_data.gyro_x_dps, received_data.gyro_y_dps, received_data.gyro_z_dps, received_data.acc_only_roll, received_data.gyro_only_roll, received_data.comp_roll, received_data.comp_pitch);
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 20);
 		}
 	}
-  /* USER CODE END StartUartTask */
+	/* USER CODE END StartUartTask */
 }
 
 /* Private application code --------------------------------------------------*/
