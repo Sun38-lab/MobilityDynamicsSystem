@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "mpu6050.h"
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,11 +50,23 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
 SystemState_t current_state = STATE_INIT; // 現在の状態を保持
 char uart_buf[100]; //　UART送信用バッファ
 volatile uint8_t timer_10ms_flag;
 MPU6050_Data_t global_sensor_data = { 0 };
+
+// PIDゲイン
+volatile float Kp = 15.0f;
+volatile float Ki = 0.0f;
+volatile float Kd = 0.0f;
+
+// UART受信割込み用
+#define RX_BUFFER_SIZE 32
+uint8_t rx_data;				// 1文字受信用のバッファ
+char rx_buffer[RX_BUFFER_SIZE];	// 文字列を結合するバッファ
+uint8_t rx_index = 0;			// バッファの現在位置
+
+volatile uint32_t debug_rx_count = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -126,13 +139,14 @@ int main(void)
 	}
 
 	// PWM出力開始
-	HAL_TIM_PWM_Start(&htim3,TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
 	// サーボを0度（中央：　1500μs）に設定するテスト
-	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1520);
+	__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 1520);
 	HAL_Delay(1000);
 
-
+	// ここにUART受信割込み開始処理を追加
+	HAL_UART_Receive_IT(&huart2, &rx_data, 1);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -201,6 +215,49 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void ParseCommand(char *cmd) {
+	//緊急停止コマンドの処理
+	if (strncmp(cmd, "STOP", 4) == 0) {
+		current_state = STATE_ERROR; // 状態をエラーに変更
+		HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //PWM出力停止
+	}
+	// Kpゲインの書き換え
+	else if (strncmp(cmd, "KP:", 3) == 0) {
+		Kp = atof(cmd + 3);
+	}
+	// KIゲインの書き換え (例: "KI:0.5")
+	else if (strncmp(cmd, "KI:", 3) == 0) {
+		Ki = atof(cmd + 3);
+	}
+	// KDゲインの書き換え (例: "KD:1.2")
+	else if (strncmp(cmd, "KD:", 3) == 0) {
+		Kd = atof(cmd + 3);
+	}
+}
+
+// UART受信完了割込みコールバック
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	if (huart->Instance == USART2) {
+		debug_rx_count++;
+		// 改行コードが来たらコマンド解析を実行
+		if (rx_data == '\n' || rx_data == '\r') {
+			rx_buffer[rx_index] = '\0'; //文字列の終端処理
+			if (rx_index > 0) {
+				ParseCommand(rx_buffer);
+			}
+			rx_index = 0; // バッファ位置をリセット
+		} else {
+			// バッファオーバーフローを防ぎつつ文字を蓄積
+			if (rx_index < RX_BUFFER_SIZE - 1) {
+				rx_buffer[rx_index++] = rx_data;
+			} else {
+				rx_index = 0; //異常に長い文字列は破棄
+			}
+		}
+		// 次の１文字受信割込みを再開
+		HAL_UART_Receive_IT(&huart2, &rx_data, 1);
+	}
+}
 
 /* USER CODE END 4 */
 

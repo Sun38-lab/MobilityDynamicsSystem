@@ -37,10 +37,10 @@ extern "C" {
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
 typedef enum {
-	STATE_INIT,			//　初期化
-	STATE_CALIBRATION,	//　センサーのキャリブレーション
+	STATE_INIT,			// 初期化
+	STATE_CALIBRATION,	// センサーのキャリブレーション
 	STATE_NORMAL,		// 通常動作
-	STATE_ERROR			//　エラー状態
+	STATE_ERROR			// エラー状態
 } SystemState_t;
 /* USER CODE END ET */
 
