@@ -40,18 +40,24 @@ namespace MobilityMonitor
             numKp = new NumericUpDown();
             labelKp = new Label();
             btnEmergencyStop = new Button();
+            groupTargetAngle = new GroupBox();
+            label2 = new Label();
+            label1 = new Label();
+            btnTarget0 = new Button();
+            btnTarget15 = new Button();
             groupBoxGain.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numKd).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numKi).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numKp).BeginInit();
+            groupTargetAngle.SuspendLayout();
             SuspendLayout();
             // 
             // formsPlot1
             // 
             formsPlot1.DisplayScale = 1F;
-            formsPlot1.Location = new Point(12, 72);
+            formsPlot1.Location = new Point(41, 78);
             formsPlot1.Name = "formsPlot1";
-            formsPlot1.Size = new Size(552, 287);
+            formsPlot1.Size = new Size(605, 335);
             formsPlot1.TabIndex = 0;
             // 
             // groupBoxGain
@@ -65,7 +71,7 @@ namespace MobilityMonitor
             groupBoxGain.Controls.Add(btnSendKp);
             groupBoxGain.Controls.Add(numKp);
             groupBoxGain.Controls.Add(labelKp);
-            groupBoxGain.Location = new Point(580, 83);
+            groupBoxGain.Location = new Point(679, 106);
             groupBoxGain.Name = "groupBoxGain";
             groupBoxGain.Size = new Size(193, 253);
             groupBoxGain.TabIndex = 1;
@@ -87,6 +93,7 @@ namespace MobilityMonitor
             numKd.DecimalPlaces = 2;
             numKd.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
             numKd.Location = new Point(51, 176);
+            numKd.Minimum = new decimal(new int[] { 10, 0, 0, int.MinValue });
             numKd.Name = "numKd";
             numKd.Size = new Size(120, 23);
             numKd.TabIndex = 7;
@@ -143,10 +150,11 @@ namespace MobilityMonitor
             numKp.DecimalPlaces = 2;
             numKp.Increment = new decimal(new int[] { 1, 0, 0, 65536 });
             numKp.Location = new Point(51, 36);
+            numKp.Maximum = new decimal(new int[] { 300, 0, 0, 0 });
             numKp.Name = "numKp";
             numKp.Size = new Size(120, 23);
             numKp.TabIndex = 1;
-            numKp.Value = new decimal(new int[] { 1500, 0, 0, 131072 });
+            numKp.Value = new decimal(new int[] { 150, 0, 0, 0 });
             // 
             // labelKp
             // 
@@ -162,19 +170,69 @@ namespace MobilityMonitor
             btnEmergencyStop.BackColor = Color.Red;
             btnEmergencyStop.Font = new Font("Yu Gothic UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 128);
             btnEmergencyStop.ForeColor = Color.White;
-            btnEmergencyStop.Location = new Point(641, 361);
+            btnEmergencyStop.Location = new Point(923, 227);
             btnEmergencyStop.Name = "btnEmergencyStop";
-            btnEmergencyStop.Size = new Size(132, 34);
+            btnEmergencyStop.Size = new Size(118, 32);
             btnEmergencyStop.TabIndex = 9;
             btnEmergencyStop.Text = "EMERGENCY STOP";
             btnEmergencyStop.UseVisualStyleBackColor = false;
             btnEmergencyStop.Click += btnEmergencyStop_Click;
             // 
+            // groupTargetAngle
+            // 
+            groupTargetAngle.Controls.Add(label2);
+            groupTargetAngle.Controls.Add(label1);
+            groupTargetAngle.Controls.Add(btnTarget0);
+            groupTargetAngle.Controls.Add(btnTarget15);
+            groupTargetAngle.Location = new Point(899, 106);
+            groupTargetAngle.Name = "groupTargetAngle";
+            groupTargetAngle.Size = new Size(142, 110);
+            groupTargetAngle.TabIndex = 10;
+            groupTargetAngle.TabStop = false;
+            groupTargetAngle.Text = "Target Angle";
+            // 
+            // label2
+            // 
+            label2.AutoSize = true;
+            label2.Location = new Point(30, 121);
+            label2.Name = "label2";
+            label2.Size = new Size(0, 15);
+            label2.TabIndex = 11;
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Location = new Point(24, 59);
+            label1.Name = "label1";
+            label1.Size = new Size(0, 15);
+            label1.TabIndex = 9;
+            // 
+            // btnTarget0
+            // 
+            btnTarget0.Location = new Point(30, 69);
+            btnTarget0.Name = "btnTarget0";
+            btnTarget0.Size = new Size(75, 23);
+            btnTarget0.TabIndex = 10;
+            btnTarget0.Text = "0.0Åã";
+            btnTarget0.UseVisualStyleBackColor = true;
+            btnTarget0.Click += btnTarget0_Click;
+            // 
+            // btnTarget15
+            // 
+            btnTarget15.Location = new Point(30, 34);
+            btnTarget15.Name = "btnTarget15";
+            btnTarget15.Size = new Size(75, 23);
+            btnTarget15.TabIndex = 9;
+            btnTarget15.Text = "15.0Åã";
+            btnTarget15.UseVisualStyleBackColor = true;
+            btnTarget15.Click += btnTarget15_Click;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(800, 450);
+            ClientSize = new Size(1068, 483);
+            Controls.Add(groupTargetAngle);
             Controls.Add(btnEmergencyStop);
             Controls.Add(groupBoxGain);
             Controls.Add(formsPlot1);
@@ -185,6 +243,8 @@ namespace MobilityMonitor
             ((System.ComponentModel.ISupportInitialize)numKd).EndInit();
             ((System.ComponentModel.ISupportInitialize)numKi).EndInit();
             ((System.ComponentModel.ISupportInitialize)numKp).EndInit();
+            groupTargetAngle.ResumeLayout(false);
+            groupTargetAngle.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -202,5 +262,10 @@ namespace MobilityMonitor
         private NumericUpDown numKp;
         private Label labelKp;
         private Button btnEmergencyStop;
+        private GroupBox groupTargetAngle;
+        private Label label2;
+        private Label label1;
+        private Button btnTarget0;
+        private Button btnTarget15;
     }
 }
