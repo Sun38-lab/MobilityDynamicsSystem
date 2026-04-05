@@ -1,5 +1,10 @@
 # MobilityDynamicsSystem
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Platform](https://img.shields.io/badge/platform-STM32-blue)
+![RTOS](https://img.shields.io/badge/RTOS-FreeRTOS-orange)
+![C#](https://img.shields.io/badge/GUI-C%23_WinForms-green)
+
 ## 📌 プロジェクト概要 (Overview)
 **PC連動型 1軸姿勢制御（ジンバル）システム**
 
