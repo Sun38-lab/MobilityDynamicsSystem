@@ -9,12 +9,10 @@ namespace MobilityMonitor
     {
         private SerialPort serialPort;
         private string serialBuffer = "";
-        // グラフ描画用のデータバッファ
-        private DataLogger loggerAccelX;
-        private DataLogger loggerGyroX;
 
-        private DataLogger loggerAccAngle; //角速度からの角度
-        private DataLogger loggerGyroAngle; //加速度からの角度
+        // グラフ描画用のデータバッファ
+        private DataLogger loggerAccAngle; //加速度からの角度
+        private DataLogger loggerGyroAngle; //角速度からの角度
         private DataLogger loggerCompRollAngle; //補正後角ロール角
         private DataLogger loggerCompPitchAngle; //補正後のピッチ角
 
@@ -28,10 +26,9 @@ namespace MobilityMonitor
             SetSerialPort();
         }
 
+        #region 準備
         private void SetupPlot()
         {
-            //loggerAccelX = formsPlot1.Plot.Add.DataLogger();
-            //loggerGyroX = formsPlot1.Plot.Add.DataLogger();
             loggerAccAngle = formsPlot1.Plot.Add.DataLogger();
             loggerGyroAngle = formsPlot1.Plot.Add.DataLogger();
             loggerCompRollAngle = formsPlot1.Plot.Add.DataLogger();
@@ -42,23 +39,17 @@ namespace MobilityMonitor
             loggerCompRollAngle.ManageAxisLimits = false;
             loggerCompPitchAngle.ManageAxisLimits = false;
 
-            //loggerAccelX.Color = Colors.Blue;
-            //loggerGyroX.Color = Colors.Red;
             loggerAccAngle.Color = Colors.LightBlue; // 加速度（水色）
             loggerGyroAngle.Color = Colors.Orange;   // ジャイロ（オレンジ）
-            loggerCompRollAngle.Color = Colors.Green;
-            loggerCompPitchAngle.Color = Colors.Purple;
+            loggerCompRollAngle.Color = Colors.Green; // ロール角
+            loggerCompPitchAngle.Color = Colors.Purple; // ピッチ角
 
+            loggerCompPitchAngle.LineWidth = 2; // ピッチ角の線を太く
 
+            loggerCompPitchAngle.LegendText = "Pitch(deg)";
+            loggerGyroAngle.LegendText = "Gyro(dps)";
 
-            //loggerGyroX.Axes.YAxis = formsPlot1.Plot.Axes.Right;
-
-            //// 左右のY軸ラベルを独立して設定し、色も合わせる
-            //formsPlot1.Plot.Axes.Left.Label.Text = "Acceleration (G)";
-            //formsPlot1.Plot.Axes.Left.Label.ForeColor = Colors.Blue;
-
-            //formsPlot1.Plot.Axes.Right.Label.Text = "Gyroscope (deg/s)";
-            //formsPlot1.Plot.Axes.Right.Label.ForeColor = Colors.Red;
+            formsPlot1.Plot.ShowLegend();
 
             formsPlot1.Plot.Title("MobilityDynamicsSystem - Real-time Data");
             formsPlot1.Plot.Axes.Bottom.Label.Text = "Time";
@@ -79,7 +70,7 @@ namespace MobilityMonitor
                     // X軸を「最新の5秒分」にスライド
                     formsPlot1.Plot.Axes.SetLimitsX(minX, currentX);
 
-                    // Y軸を物理的な角度（例：-45度〜45度）に強制固定してオートスケールを無効化
+                    // Y軸を物理的な角度（例：-55度〜55度）に強制固定してオートスケールを無効化
                     formsPlot1.Plot.Axes.SetLimitsY(-55, 55);
                 }
                 formsPlot1.Refresh();
@@ -102,53 +93,9 @@ namespace MobilityMonitor
             }
 
         }
+        #endregion
 
-        //private void DataReceivedHandler(object sender, SerialDataReceivedEventArgs e)
-        //{
-        //    SerialPort sp = (SerialPort)sender;
-
-        //    try
-        //    {
-        //        while (sp.BytesToRead > 0)
-        //        {
-        //            string line = sp.ReadLine();
-
-        //            if (line.StartsWith("$MPU"))
-        //            {
-        //                string[] parts = line.Split(',');
-        //                if (parts.Length == 11)
-        //                {
-        //                    //// パース処理 (parts[1]=accel_X, ..., parts[4]=gyro_X)
-        //                    //if (double.TryParse(parts[1], out double accelX) &&
-        //                    //    double.TryParse(parts[4], out double gyroX))
-        //                    //{
-        //                    //    // DataLoggerにデータを追加（ScottPlot5のDataLoggerはスレッドセーフ）
-        //                    //    loggerAccelX.Add(accelX);
-        //                    //    loggerGyroX.Add(gyroX);
-        //                    //}
-
-        //                    // 8列目(parts[7])と9列目(parts[8])の角度データを追加
-        //                    if (double.TryParse(parts[7], out double accAngle) &&
-        //                        double.TryParse(parts[8], out double gyroAngle))
-        //                    {
-        //                        loggerAccAngle.Add(accAngle);
-        //                        loggerGyroAngle.Add(gyroAngle);
-        //                    }
-
-        //                    if (double.TryParse(parts[9], out double compRollAngle) &&
-        //                        double.TryParse(parts[10], out double compPitchAngle))
-        //                    {
-        //                        loggerCompRollAngle.Add(compRollAngle);    // 補正後ロール（緑）
-        //                        loggerCompPitchAngle.Add(compPitchAngle);  // 補正後ピッチ（紫）
-        //                    }
-        //                }
-        //            }
-        //        }
-        //    }
-        //    catch (TimeoutException) { /* 読み込みタイムアウト時の処理 */ }
-        //    catch (Exception) { /* パースエラーなどの処理 */ }
-        //}
-
+        #region 受信処理
         private void DataReceivedHandler(object sender, SerialDataReceivedEventArgs e)
         {
             SerialPort sp = (SerialPort)sender;
@@ -170,7 +117,7 @@ namespace MobilityMonitor
                     System.Diagnostics.Debug.WriteLine(line);
 
                     // ------------------------------------------------
-                    // ここから下は先ほどと同じパース処理
+                    //  パース処理
                     // ------------------------------------------------
                     if (line.StartsWith("$MPU"))
                     {
@@ -229,21 +176,13 @@ namespace MobilityMonitor
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                /* パースエラーやバッファオーバーフローの処理 */
                 // 念のためバッファが異常に膨れ上がったらリセットする安全装置
                 if (serialBuffer.Length > 10000) serialBuffer = "";
             }
         }
-
-        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            if (serialPort != null && serialPort.IsOpen)
-            {
-                serialPort.Close();
-            }
-        }
+        #endregion
 
         #region ボタンクリックイベント
         private void btnSendKp_Click(object sender, EventArgs e)
@@ -279,8 +218,18 @@ namespace MobilityMonitor
         {
             SendCommandToSTM32("TARGET:0.0");
         }
+
+        // フォーム閉じた際の処理
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (serialPort != null && serialPort.IsOpen)
+            {
+                serialPort.Close();
+            }
+        }
         #endregion
 
+        #region メソッド
         /// <summary>
         /// コマンドをシリアル通信で送信
         /// </summary>
@@ -303,5 +252,6 @@ namespace MobilityMonitor
                 MessageBox.Show("シリアルポートが開いていません。", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
+        #endregion
     }
 }

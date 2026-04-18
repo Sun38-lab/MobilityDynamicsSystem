@@ -55,9 +55,9 @@ namespace MobilityMonitor
             // formsPlot1
             // 
             formsPlot1.DisplayScale = 1F;
-            formsPlot1.Location = new Point(41, 78);
+            formsPlot1.Location = new Point(47, 72);
             formsPlot1.Name = "formsPlot1";
-            formsPlot1.Size = new Size(605, 335);
+            formsPlot1.Size = new Size(668, 398);
             formsPlot1.TabIndex = 0;
             // 
             // groupBoxGain
@@ -71,7 +71,7 @@ namespace MobilityMonitor
             groupBoxGain.Controls.Add(btnSendKp);
             groupBoxGain.Controls.Add(numKp);
             groupBoxGain.Controls.Add(labelKp);
-            groupBoxGain.Location = new Point(679, 106);
+            groupBoxGain.Location = new Point(739, 72);
             groupBoxGain.Name = "groupBoxGain";
             groupBoxGain.Size = new Size(193, 253);
             groupBoxGain.TabIndex = 1;
@@ -170,7 +170,7 @@ namespace MobilityMonitor
             btnEmergencyStop.BackColor = Color.Red;
             btnEmergencyStop.Font = new Font("Yu Gothic UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 128);
             btnEmergencyStop.ForeColor = Color.White;
-            btnEmergencyStop.Location = new Point(923, 227);
+            btnEmergencyStop.Location = new Point(739, 452);
             btnEmergencyStop.Name = "btnEmergencyStop";
             btnEmergencyStop.Size = new Size(118, 32);
             btnEmergencyStop.TabIndex = 9;
@@ -184,9 +184,9 @@ namespace MobilityMonitor
             groupTargetAngle.Controls.Add(label1);
             groupTargetAngle.Controls.Add(btnTarget0);
             groupTargetAngle.Controls.Add(btnTarget15);
-            groupTargetAngle.Location = new Point(899, 106);
+            groupTargetAngle.Location = new Point(739, 331);
             groupTargetAngle.Name = "groupTargetAngle";
-            groupTargetAngle.Size = new Size(142, 110);
+            groupTargetAngle.Size = new Size(193, 110);
             groupTargetAngle.TabIndex = 10;
             groupTargetAngle.TabStop = false;
             groupTargetAngle.Text = "Target Angle";
@@ -209,7 +209,7 @@ namespace MobilityMonitor
             // 
             // btnTarget0
             // 
-            btnTarget0.Location = new Point(30, 69);
+            btnTarget0.Location = new Point(96, 69);
             btnTarget0.Name = "btnTarget0";
             btnTarget0.Size = new Size(75, 23);
             btnTarget0.TabIndex = 10;
@@ -219,7 +219,7 @@ namespace MobilityMonitor
             // 
             // btnTarget15
             // 
-            btnTarget15.Location = new Point(30, 34);
+            btnTarget15.Location = new Point(96, 40);
             btnTarget15.Name = "btnTarget15";
             btnTarget15.Size = new Size(75, 23);
             btnTarget15.TabIndex = 9;
@@ -231,7 +231,7 @@ namespace MobilityMonitor
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1068, 483);
+            ClientSize = new Size(958, 544);
             Controls.Add(groupTargetAngle);
             Controls.Add(btnEmergencyStop);
             Controls.Add(groupBoxGain);
