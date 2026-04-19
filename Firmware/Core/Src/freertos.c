@@ -36,6 +36,15 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+	float pitch;
+	float error;
+	float speed;
+	float gyro_y;
+	int pulse_width;
+	int current_pwm;
+} TelemetryData_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -50,6 +59,11 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+// main.cのグローバル変数を参照する
+extern volatile float Kp;
+extern volatile float Ki;
+extern volatile float Kd;
+extern volatile float target_pitch;
 extern MPU6050_Data_t global_sensor_data;
 /* USER CODE END Variables */
 /* Definitions for SensorTaskHandl */
@@ -66,7 +80,33 @@ const osMessageQueueAttr_t SensorDataQueue_attributes = { .name = "SensorDataQue
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+static float CalculateControlSpeed(float error, float derivative) {
+	float speed = 0.0f;
+	float error_abs = (error > 0.0f) ? error : -error;
 
+	if (error_abs > 10.0f) {
+		// 1.大ズレ：バンバン制御
+		speed = (error > 0) ? 3000.0f : -3000.0f;
+	} else if (error_abs > 4.0f) {
+		// 2.接近フェーズ（4度〜10度）
+		// 摩擦の影響が少ない領域なので、やや強めのKpで一気に寄せる
+		speed = (60.0f * error) + (-2.0f * derivative);
+	} else if (error_abs > 2.0f) {
+		// 3.最終着地フェーズ（例: 2.0度〜10.0度）
+		// 不感帯(2.0度)を「はみ出した分」だけを抽出する
+		float active_error = (error > 0.0f) ? (error - 2.0f) : (error + 2.0f);
+
+		speed = (Kp * active_error) + (Kd * derivative);
+	} else {
+		// ジンバルが動いている時（ノイズ以上の角速度がある時）はブレーキ(Kd)を優先
+		if (derivative > 5.0f || derivative < -5.0f) {
+			speed = Kd * derivative;
+		} else {
+			speed = Ki * error;
+		}
+	}
+	return speed;
+}
 /* USER CODE END FunctionPrototypes */
 
 void StartSensorTask(void *argument);
@@ -135,6 +175,7 @@ void StartSensorTask(void *argument) {
 	MPU6050_Data_t local_sensor_data = global_sensor_data;
 	uint32_t tick_delay = 10;
 	uint32_t tick_update = osKernelGetTickCount();
+	TelemetryData_t tx_data;
 
 	for (;;) {
 
@@ -142,8 +183,38 @@ void StartSensorTask(void *argument) {
 			if (MPU6050_Read_Physical(&hi2c1, &local_sensor_data) == HAL_OK) {
 				MPU6050_Calculate_Attitude(&local_sensor_data);
 
+				// 偏差（エラー）の計算
+				float error = target_pitch - local_sensor_data.comp_pitch;
+				float derivative = local_sensor_data.gyro_y_dps;
+
+				float speed = CalculateControlSpeed(error, derivative);
+
+				// 静的変数（メモリ）として現在のPWMを保持し、変化量を足し込み続ける
+				static float current_pwm = 1520.0f;
+				current_pwm += speed * 0.01f; // DT(0.01秒)を掛けて足し込む
+
+				// サーボの可動範囲(500μs~2400μs)を超えないようにリミット
+				if (current_pwm > 2400.0f)
+					current_pwm = 2400.0f;
+				if (current_pwm < 600.0f)
+					current_pwm = 600.0f;
+
+				int pulse_width = (int) current_pwm;
+
+				// --- フェールセーフ処理：NORMALの時のみPWMを更新 ---
+				if (current_state == STATE_NORMAL) {
+					__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_width);
+				}
+
+				tx_data.current_pwm = current_pwm;
+				tx_data.pulse_width = pulse_width;
+				tx_data.error = error;
+				tx_data.speed = speed;
+				tx_data.gyro_y = local_sensor_data.gyro_y_dps;
+				tx_data.pitch = local_sensor_data.comp_pitch;
+
 				// 取得したデータをQueueに送信
-				osMessageQueuePut(SensorDataQueueHandle, &local_sensor_data, 0, 0);
+				osMessageQueuePut(SensorDataQueueHandle, &tx_data, 0, 0);
 			} else {
 				current_state = STATE_ERROR;
 			}
@@ -168,87 +239,18 @@ void StartUartTask(void *argument) {
 	/* USER CODE BEGIN StartUartTask */
 	/* Infinite loop */
 	/* USER CODE BEGIN StartUartTask */
-	MPU6050_Data_t received_data;
 	char uart_buf[120];
-
-	// main.cのグローバル変数を参照する
-	extern volatile float Kp;
-	extern volatile float Ki;
-	extern volatile float Kd;
-	extern volatile float target_pitch;
-
-	// PIDゲイン
-	volatile float integral = 0.0f;
-	volatile float prev_error = 0.0f;
-
-	float prev_ki = Ki;
-
-	volatile int base_pwm = 1520;
-
-	if (osMessageQueueGet(SensorDataQueueHandle, &received_data, NULL, osWaitForever) == osOK) {
-		target_pitch = received_data.comp_pitch;
-	}
+	TelemetryData_t rx_data;
 
 	for (;;) {
 		// Queueにデータが来るまで無限に待機 (CPUを休ませる)
-		if (osMessageQueueGet(SensorDataQueueHandle, &received_data, NULL, osWaitForever) == osOK) {
-
-			// 偏差（エラー）の計算
-			float error = target_pitch - received_data.comp_pitch;
-
-			float speed = 0.0f;
-			float error_abs = (error > 0.0f) ? error : -error;
-			float derivative = received_data.gyro_y_dps;
-
-			// 摩擦に打ち勝つための最低速度（ログを見ながら、モーターがギリギリ動く値に調整）
-			const float MIN_SPEED = 200.0f;
-
-			if (error_abs > 10.0f) {
-				// 1.大ズレ：バンバン制御
-				speed = (error > 0) ? 3000.0f : -3000.0f;
-			} else if (error_abs > 4.0f) {
-				// 2.接近フェーズ（4度〜10度）
-				// 摩擦の影響が少ない領域なので、やや強めのKpで一気に寄せる
-				speed = (60.0f * error) + (-2.0f * derivative);
-			}
-			// 3.最終着地フェーズ（例: 2.0度〜10.0度）
-			else if (error_abs > 2.0f) {
-				// 不感帯(2.0度)を「はみ出した分」だけを抽出する
-				float active_error = (error > 0.0f) ? (error - 2.0f) : (error + 2.0f);
-
-				speed = (Kp * active_error) + (Kd * derivative);
-			} else {
-				// ジンバルが動いている時（ノイズ以上の角速度がある時）はブレーキ(Kd)を優先
-				if (derivative > 5.0f || derivative < -5.0f) {
-					speed = Kd * derivative;
-				}
-				else {
-					speed = Ki * error;
-				}
-			}
-
-			// 静的変数（メモリ）として現在のPWMを保持し、変化量を足し込み続ける
-			static float current_pwm = 1520.0f;
-			current_pwm += speed * 0.01f; // DT(0.01秒)を掛けて足し込む
-
-			// サーボの可動範囲(500μs~2400μs)を超えないようにリミット
-			if (current_pwm > 2400.0f)
-				current_pwm = 2400.0f;
-			if (current_pwm < 600.0f)
-				current_pwm = 600.0f;
-
-			int pulse_width = (int) current_pwm;
-
-			// --- フェールセーフ処理：NORMALの時のみPWMを更新 ---
-			if (current_state == STATE_NORMAL) {
-				__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, pulse_width);
-			}
+		if (osMessageQueueGet(SensorDataQueueHandle, &rx_data, NULL, osWaitForever) == osOK) {
 
 			// UART送信
 //			sprintf(uart_buf, "$MPU,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\r\n", received_data.accel_x_g, received_data.accel_y_g, received_data.accel_z_g, received_data.gyro_x_dps, received_data.gyro_y_dps, received_data.gyro_z_dps, received_data.acc_only_roll, received_data.gyro_only_roll, received_data.comp_roll, received_data.comp_pitch);
 
 			// Debug:UART送信
-			sprintf(uart_buf, "DEBUG,Kp:%.2f,Kd:%.2f,Pitch:%.2f,Err:%.2f,Gyro:%.2f,Spd:%.2f,PWM:%d\r\n", Kp, Kd, received_data.comp_pitch, error, received_data.gyro_y_dps, speed, pulse_width);
+			sprintf(uart_buf, "DEBUG,Kp:%.2f,Kd:%.2f,Pitch:%.2f,Err:%.2f,Gyro:%.2f,Spd:%.2f,PWM:%d\r\n", Kp, Kd, rx_data.pitch, rx_data.error, rx_data.gyro_y, rx_data.speed, rx_data.pulse_width);
 
 			HAL_UART_Transmit(&huart2, (uint8_t*) uart_buf, strlen(uart_buf), 20);
 		}
