@@ -56,9 +56,9 @@ volatile uint8_t timer_10ms_flag;
 MPU6050_Data_t global_sensor_data = { 0 };
 
 // PIDゲイン
-volatile float Kp = 100.0f;
-volatile float Ki = 0.0f;
-volatile float Kd = 0.0f;
+volatile float Kp = 110.0f;
+volatile float Ki = 5.0f;
+volatile float Kd = -2.0f;
 
 // UART受信割込み用
 #define RX_BUFFER_SIZE 32
@@ -213,8 +213,7 @@ void SystemClock_Config(void) {
 void ParseCommand(char *cmd) {
 	//緊急停止コマンドの処理
 	if (strncmp(cmd, "STOP", 4) == 0) {
-		current_state = STATE_ERROR; // 状態をエラーに変更
-		HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //PWM出力停止
+
 	}
 	// Kpゲインの書き換え
 	else if (strncmp(cmd, "KP:", 3) == 0) {

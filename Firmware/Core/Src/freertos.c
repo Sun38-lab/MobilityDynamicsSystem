@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 #include  "tim.h"
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -80,33 +81,37 @@ const osMessageQueueAttr_t SensorDataQueue_attributes = { .name = "SensorDataQue
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-static float CalculateControlSpeed(float error, float derivative) {
-	float speed = 0.0f;
-	float error_abs = (error > 0.0f) ? error : -error;
+static float clip_float(float val, float min, float max);
+static float caluculate_control_pwm(float target, float current_pitch, float current_velocity, float prev_pwm);
+static float caluculate_control_pwm_velocity(float target, float current_pitch, float current_velocity, float current_pwm);
 
-	if (error_abs > 10.0f) {
-		// 1.大ズレ：バンバン制御
-		speed = (error > 0) ? 3000.0f : -3000.0f;
-	} else if (error_abs > 4.0f) {
-		// 2.接近フェーズ（4度〜10度）
-		// 摩擦の影響が少ない領域なので、やや強めのKpで一気に寄せる
-		speed = (60.0f * error) + (-2.0f * derivative);
-	} else if (error_abs > 2.0f) {
-		// 3.最終着地フェーズ（例: 2.0度〜10.0度）
-		// 不感帯(2.0度)を「はみ出した分」だけを抽出する
-		float active_error = (error > 0.0f) ? (error - 2.0f) : (error + 2.0f);
+//static float CalculateControlSpeed(float error, float derivative) {
+//	float speed = 0.0f;
+//	float error_abs = (error > 0.0f) ? error : -error;
+//
+//	if (error_abs > 10.0f) {
+//		// 1.大ズレ：バンバン制御
+//		speed = (error > 0) ? 3000.0f : -3000.0f;
+//	} else if (error_abs > 4.0f) {
+//		// 2.接近フェーズ（4度〜10度）
+//		// 摩擦の影響が少ない領域なので、やや強めのKpで一気に寄せる
+//		speed = (Kp * error) + (Kd* derivative);
+//	} else if (error_abs > 2.0f) {
+//		// 3.最終着地フェーズ（例: 2.0度〜10.0度）
+//		// 不感帯(2.0度)を「はみ出した分」だけを抽出する
+//		float active_error = (error > 0.0f) ? (error - 2.0f) : (error + 2.0f);
+//		speed = (Kp * active_error) + (Kd * derivative);
+//	} else {
+//		// ジンバルが動いている時（ノイズ以上の角速度がある時）はブレーキ(Kd)を優先
+//		if (derivative > 5.0f || derivative < -5.0f) {
+//			speed = Kd * derivative;
+//		} else {
+//			speed = Ki * error;
+//		}
+//	}
+//	return speed;
+//}
 
-		speed = (Kp * active_error) + (Kd * derivative);
-	} else {
-		// ジンバルが動いている時（ノイズ以上の角速度がある時）はブレーキ(Kd)を優先
-		if (derivative > 5.0f || derivative < -5.0f) {
-			speed = Kd * derivative;
-		} else {
-			speed = Ki * error;
-		}
-	}
-	return speed;
-}
 /* USER CODE END FunctionPrototypes */
 
 void StartSensorTask(void *argument);
@@ -187,17 +192,20 @@ void StartSensorTask(void *argument) {
 				float error = target_pitch - local_sensor_data.comp_pitch;
 				float derivative = local_sensor_data.gyro_y_dps;
 
-				float speed = CalculateControlSpeed(error, derivative);
+				// StartSensorTask のループ外で定義
+				static float current_pwm = 1520.0f; // 前回のPWMを保持する変数
+				current_pwm =
+						caluculate_control_pwm_velocity(target_pitch, local_sensor_data.comp_pitch, derivative, current_pwm);
 
-				// 静的変数（メモリ）として現在のPWMを保持し、変化量を足し込み続ける
-				static float current_pwm = 1520.0f;
-				current_pwm += speed * 0.01f; // DT(0.01秒)を掛けて足し込む
-
-				// サーボの可動範囲(500μs~2400μs)を超えないようにリミット
-				if (current_pwm > 2400.0f)
-					current_pwm = 2400.0f;
-				if (current_pwm < 600.0f)
-					current_pwm = 600.0f;
+//				// 静的変数（メモリ）として現在のPWMを保持し、変化量を足し込み続ける
+//				static float current_pwm = 1520.0f;
+//				current_pwm += speed * 0.01f; // DT(0.01秒)を掛けて足し込む
+				float speed = 0.0f;
+//				// サーボの可動範囲(500μs~2400μs)を超えないようにリミット
+//				if (current_pwm > 2400.0f)
+//					current_pwm = 2400.0f;
+//				if (current_pwm < 600.0f)
+//					current_pwm = 600.0f;
 
 				int pulse_width = (int) current_pwm;
 
@@ -220,6 +228,8 @@ void StartSensorTask(void *argument) {
 			}
 		} else {
 			// エラー時のフェールセーフ処理
+			current_state = STATE_ERROR; // 状態をエラーに変更
+			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1); //PWM出力停止
 		}
 		// 次の10ms周期までタスクを正確にブロックする
 		tick_update += tick_delay;
@@ -261,5 +271,61 @@ void StartUartTask(void *argument) {
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 
+static inline float clip_float(float val, float min, float max) {
+	val = ((val) < (min) ? (min) : ((val) > (max) ? (max) : (val)));
+	return val;
+}
+
+static float caluculate_control_pwm_velocity(float target, float current_pitch, float current_velocity, float current_pwm) {
+	float error = target - current_pitch;
+
+	// =======================================================
+	// ★ ロバスト性向上の鍵：「未来の誤差」を予測する
+	// =======================================================
+	// 速度(deg/s) × 想定される遅延時間(s) = 遅延の間に進んでしまう角度
+	// ※ Pythonのシミュレータで設定した「dead_time_steps」に相当する時間を入れます。
+	// 例: 50ms (0.05s) の遅延を見込む場合
+	const float PREDICT_TIME = 0.02f;
+
+	// 現在の速度を加味した「少し先の未来のエラー」
+	float future_error = error - (current_velocity * PREDICT_TIME);
+	float future_error_abs = (future_error > 0.0f) ? future_error : -future_error;
+
+	float speed = 0.0f;
+
+	// =======================================================
+	// ゾーン判定には「未来の誤差（future_error_abs）」を使う！
+	// =======================================================
+	if (future_error_abs > 10.0f) {
+		// 1. 大ズレ：バンバン制御
+		speed = (error > 0.0f) ? 3000.0f : -3000.0f;
+
+	} else if (future_error_abs > 4.0f) {
+		// 2. 接近フェーズ
+		// ※ 出力計算自体には、実際の誤差(error)を使います
+		speed = (Kp * error) + (Kd * current_velocity);
+
+	} else if (future_error_abs > 2.0f) {
+		// 3. 最終着地フェーズ
+		float active_error = (error > 0.0f) ? (error - 2.0f) : (error + 2.0f);
+		speed = (Kp * active_error) + (Kd * current_velocity);
+
+	} else {
+		// 4. 不感帯
+		if (current_velocity > 5.0f || current_velocity < -5.0f) {
+			speed = Kd * current_velocity;
+		} else {
+			speed = Ki * error;
+		}
+	}
+
+	// 最終スピードリミット
+	speed = clip_float(speed, -4000.0f, 4000.0f);
+
+	// PWMの足し込み（45度でも負けない速度型の強み！
+	float new_pwm = current_pwm + (speed * DT);
+
+	return clip_float(new_pwm, 600.0f, 2400.0f);
+}
 /* USER CODE END Application */
 
