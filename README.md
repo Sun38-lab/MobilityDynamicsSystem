@@ -96,6 +96,54 @@ $$
 | SG90 | サーボモーター | PWM制御 (周期20ms, パルス幅600~2400μs) |
 | 機構部品 | - | サーボホーンにL字金具を取り付け、センサーを直付け |
 
+
+graph LR
+    subgraph 物理ハードウェア
+        MPU[MPU-6050センサ\nI2C: 0x70]
+        Servo[SG90サーボモータ\nPWM出力]
+    end
+
+    subgraph STM32マイコン制御部_FreeRTOS
+        direction TB
+        SensorTask[SensorTask\n優先度: 高\n・10ms周期\n・未来予測制御計算]
+        Queue[(SensorDataQueue\nキューサイズ: 16)]
+        UartTask[UartTask\n優先度: 通常\n・PCへの送信]
+        UartRx[UART受信割込み\nコマンド解析]
+
+        SensorTask -- "非同期パス\n(相手を待たない)" --> Queue
+        Queue -- "待機＆取得\n(データが来たら動く)" --> UartTask
+    end
+
+    subgraph PCモニタリングツール_CSharp
+        direction TB
+        RxHandler[データ受信係\nDataReceivedHandler]
+        Memory[(グラフ用メモリバッファ)]
+        RenderTimer[グラフ描画タイマー\n50ms周期]
+        UIButtons[UI操作\nゲイン・目標値変更]
+
+        RxHandler -- "裏側でサッと保存\n(描画を待たない)" --> Memory
+        Memory -- "自分のペースで読込\n(受信を気にしない)" --> RenderTimer
+    end
+
+    %% 接続関係
+    MPU -- "センサ値" --> SensorTask
+    SensorTask -- "制御指令" --> Servo
+    
+    UartTask -- "UART送信\n(DEBUG文字列)" --> RxHandler
+    UIButtons -- "UART送信\n(TARGET:15 等)" --> UartRx
+    
+    UartRx -. "グローバル変数更新\n(Kp, Ki, Target)" .-> SensorTask
+
+    %% スタイリング（見やすくするための色付け）
+    classDef highPriority fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
+    classDef normalPriority fill:#cce5ff,stroke:#0066cc,stroke-width:2px;
+    classDef asyncQueue fill:#ffffcc,stroke:#cccc00,stroke-width:2px;
+    
+    class SensorTask highPriority;
+    class UartTask,RenderTimer normalPriority;
+    class Queue,Memory asyncQueue;
+
+
 ---
 
 ### 開発環境とセットアップ
