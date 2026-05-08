@@ -27,7 +27,7 @@
 
 ```mermaid
 flowchart LR
-    subgraph PC["PC / Host"]
+    subgraph PC["PC"]
         Logger["C# Logger & MBD Sim"]
     end
 
@@ -47,6 +47,50 @@ flowchart LR
 * **Sensors/Actuators:** MPU-6050 (6軸IMU) / SG90 (サーボモーター)
 * **Visualization:** C# Windows Forms + ScottPlot (100Hzリアルタイム波形ロガー)
 * **Simulation:** Python / Jupyter Notebook (プラントモデル構築・パラメータ探索)
+
+<details>
+<summary><b>詳細なシステム設計（タスク構成図・状態遷移図）</b></summary>
+
+**■ RTOS タスク・キュー設計**<br/>
+10msの厳格な制御周期を維持するため、I2Cセンサ読み取りとPID演算を最優先タスク（High）で実行。時間のかかるUART送信処理は `osMessageQueue` を介して通常優先度タスク（Normal）へ逃がす、リアルタイム性を重視した非同期ロギングを実装しています。
+
+```mermaid
+flowchart TD
+    subgraph STM32["STM32 / FreeRTOS"]
+        direction TB
+        Task1["SensorTask\n(Priority: High / 10ms周期)"]
+        Task2["UartTask\n(Priority: Normal)"]
+        Queue[("SensorDataQueue\n(osMessageQueue)")]
+        
+        Task1 -->|"TelemetryData_t"| Queue
+        Queue -->|"osWaitForever"| Task2
+    end
+    
+    IMU["MPU-6050 (IMU)"] -- "I2C Read" --> Task1
+    Task1 -- "PWM Output" --> Servo["SG90 Motor"]
+    Task2 -- "UART Transmit" --> PC["PC (Logger)"]
+```
+
+**■ システム状態遷移とフェールセーフ機構**<br/>
+システム全体をステートマシンで管理。正常稼働時（`STATE_NORMAL`）は未来の誤差予測量に基づいて4つの制御ゾーンをシームレスに遷移します。通信異常などを検知した際は即座に `STATE_ERROR` へ移行し、ハードウェアタイマーのPWM出力を完全停止（フェールストップ）させて暴走を防ぎます。
+
+```mermaid
+flowchart TD
+    Init(["STATE_INIT<br/>(ハードウェア初期化・I2Cバスリカバリ)"])
+    Error(["STATE_ERROR<br/>(フェールストップ・PWM即時遮断)"])
+
+    subgraph Normal["STATE_NORMAL (10ms周期 リアルタイム姿勢制御)"]
+        direction LR
+        Z1["ゾーン1: 大ズレ<br/>(バンバン制御)"] <--> Z2["ゾーン2: 接近<br/>(Kp + Kd)"]
+        Z2 <--> Z3["ゾーン3: 最終着地<br/>(Kp + Kd 弱)"]
+        Z3 <--> Z4["ゾーン4: 不感帯<br/>(Kdブレーキ or Ki押し込み)"]
+    end
+
+    Init -->|"キャリブレーション成功"| Normal
+    Init -->|"初期化失敗"| Error
+    Normal -->|"I2C通信異常<br/>(センサーロスト時)"| Error
+```
+</details>
 
 ## 4. Technical Highlights
 
@@ -85,8 +129,8 @@ flowchart LR
   <i>図1: 15度のステップ応答テスト</i>
 </p>
 
-上段のピッチ角グラフが示す通り、実機（緑）はシミュレーション（青）と同様にオーバーシュートなしで滑らかに整定しています。
-下段のPWMグラフにおいて定常的なズレが見られますが、これはハードウェアの個体差や組み付け時の微細な重力負荷の違いによるモデル誤差です。
+上段のピッチ角グラフが示す通り、実機（緑）はシミュレーション（青）と同様にオーバーシュートなしで滑らかに整定しています。<br/>
+下段のPWMグラフにおいて定常的なズレが見られますが、これはハードウェアの個体差や組み付け時の微細な重力負荷の違いによるモデル誤差です。<br/>
 制御アルゴリズムがこの物理的な誤差を吸収し、目標角度へ正確に収束させていることが確認できます。
 
 ### 4.4 パラメータ変動に対するロバスト性の検証
@@ -111,7 +155,7 @@ flowchart LR
   <i>図3: サイン波追従テスト。安定して目標値に追従している。</i>
 </p>
 
-実機波形の分析から、ギアのバックラッシュが約1.5度存在するため、余裕を持たせた2.0度を不感帯のしきい値に設定しています。
+実機波形の分析から、ギアのバックラッシュが約1.5度存在するため、余裕を持たせた2.0度を不感帯のしきい値に設定しています。<br/>
 図3の波形頂点が平坦になっているのは、このハードウェアの限界に起因する激しいハンチングを防ぐため、あえて微小角での追従遅れを許容したトレードオフの結果です。
 
 ### 4.6 ハードウェア制約への対応とトラブルシューティング
