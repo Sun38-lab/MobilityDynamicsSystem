@@ -29,3 +29,5 @@ Release/
 [Oo]bj/
 .vs/
 *.user
+
+.venv/
