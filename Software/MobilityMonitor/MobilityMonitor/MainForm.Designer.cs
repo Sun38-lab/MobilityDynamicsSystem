@@ -55,7 +55,10 @@ namespace MobilityMonitor
             label7 = new Label();
             label8 = new Label();
             label9 = new Label();
-            statusStrip1 = new StatusStrip();
+            statusStrip = new StatusStrip();
+            lblComStatus = new ToolStripStatusLabel();
+            lblCurrentPitch = new ToolStripStatusLabel();
+            lblCurrentPwm = new ToolStripStatusLabel();
             groupBoxGain.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)numKd).BeginInit();
             ((System.ComponentModel.ISupportInitialize)numKi).BeginInit();
@@ -63,18 +66,21 @@ namespace MobilityMonitor
             groupTargetAngle.SuspendLayout();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
+            statusStrip.SuspendLayout();
             SuspendLayout();
             // 
             // formsPlot1
             // 
             formsPlot1.DisplayScale = 1F;
-            formsPlot1.Location = new Point(375, 66);
+            formsPlot1.ForeColor = SystemColors.ControlText;
+            formsPlot1.Location = new Point(398, 68);
             formsPlot1.Name = "formsPlot1";
             formsPlot1.Size = new Size(833, 468);
             formsPlot1.TabIndex = 0;
             // 
             // groupBoxGain
             // 
+            groupBoxGain.BackColor = Color.FromArgb(51, 51, 55);
             groupBoxGain.Controls.Add(btnSendKd);
             groupBoxGain.Controls.Add(numKd);
             groupBoxGain.Controls.Add(labelKd);
@@ -94,14 +100,15 @@ namespace MobilityMonitor
             // 
             // btnSendKd
             // 
+            btnSendKd.BackColor = Color.FromArgb(69, 69, 69);
             btnSendKd.FlatStyle = FlatStyle.Flat;
             btnSendKd.ForeColor = Color.FromArgb(241, 241, 241);
             btnSendKd.Location = new Point(194, 127);
             btnSendKd.Name = "btnSendKd";
-            btnSendKd.Size = new Size(75, 23);
+            btnSendKd.Size = new Size(75, 22);
             btnSendKd.TabIndex = 8;
             btnSendKd.Text = "Send Kd";
-            btnSendKd.UseVisualStyleBackColor = true;
+            btnSendKd.UseVisualStyleBackColor = false;
             btnSendKd.Click += btnSendKd_Click;
             // 
             // numKd
@@ -113,6 +120,7 @@ namespace MobilityMonitor
             numKd.Name = "numKd";
             numKd.Size = new Size(120, 23);
             numKd.TabIndex = 7;
+            numKd.Value = new decimal(new int[] { 20, 0, 0, -2147418112 });
             // 
             // labelKd
             // 
@@ -126,14 +134,15 @@ namespace MobilityMonitor
             // 
             // btnSendKi
             // 
+            btnSendKi.BackColor = Color.FromArgb(69, 69, 69);
             btnSendKi.FlatStyle = FlatStyle.Flat;
             btnSendKi.ForeColor = Color.FromArgb(241, 241, 241);
             btnSendKi.Location = new Point(194, 83);
             btnSendKi.Name = "btnSendKi";
-            btnSendKi.Size = new Size(75, 23);
+            btnSendKi.Size = new Size(75, 22);
             btnSendKi.TabIndex = 5;
             btnSendKi.Text = "Send Ki";
-            btnSendKi.UseVisualStyleBackColor = true;
+            btnSendKi.UseVisualStyleBackColor = false;
             btnSendKi.Click += btnSendKi_Click;
             // 
             // numKi
@@ -144,6 +153,7 @@ namespace MobilityMonitor
             numKi.Name = "numKi";
             numKi.Size = new Size(120, 23);
             numKi.TabIndex = 4;
+            numKi.Value = new decimal(new int[] { 5, 0, 0, 0 });
             // 
             // labelKi
             // 
@@ -157,14 +167,15 @@ namespace MobilityMonitor
             // 
             // btnSendKp
             // 
+            btnSendKp.BackColor = Color.FromArgb(69, 69, 69);
             btnSendKp.FlatStyle = FlatStyle.Flat;
             btnSendKp.ForeColor = Color.FromArgb(241, 241, 241);
             btnSendKp.Location = new Point(194, 38);
             btnSendKp.Name = "btnSendKp";
-            btnSendKp.Size = new Size(75, 23);
+            btnSendKp.Size = new Size(75, 22);
             btnSendKp.TabIndex = 2;
             btnSendKp.Text = "Send Kp";
-            btnSendKp.UseVisualStyleBackColor = true;
+            btnSendKp.UseVisualStyleBackColor = false;
             btnSendKp.Click += btnSendKp_Click;
             // 
             // numKp
@@ -177,7 +188,7 @@ namespace MobilityMonitor
             numKp.Name = "numKp";
             numKp.Size = new Size(120, 23);
             numKp.TabIndex = 1;
-            numKp.Value = new decimal(new int[] { 150, 0, 0, 0 });
+            numKp.Value = new decimal(new int[] { 110, 0, 0, 0 });
             // 
             // labelKp
             // 
@@ -191,13 +202,13 @@ namespace MobilityMonitor
             // 
             // btnEmergencyStop
             // 
-            btnEmergencyStop.BackColor = Color.Red;
+            btnEmergencyStop.BackColor = Color.FromArgb(204, 51, 51);
             btnEmergencyStop.FlatStyle = FlatStyle.Flat;
             btnEmergencyStop.Font = new Font("Yu Gothic UI Semibold", 9F, FontStyle.Bold, GraphicsUnit.Point, 128);
             btnEmergencyStop.ForeColor = Color.White;
-            btnEmergencyStop.Location = new Point(24, 35);
+            btnEmergencyStop.Location = new Point(71, 34);
             btnEmergencyStop.Name = "btnEmergencyStop";
-            btnEmergencyStop.Size = new Size(118, 32);
+            btnEmergencyStop.Size = new Size(160, 35);
             btnEmergencyStop.TabIndex = 9;
             btnEmergencyStop.Text = "EMERGENCY STOP";
             btnEmergencyStop.UseVisualStyleBackColor = false;
@@ -205,6 +216,7 @@ namespace MobilityMonitor
             // 
             // groupTargetAngle
             // 
+            groupTargetAngle.BackColor = Color.FromArgb(51, 51, 55);
             groupTargetAngle.Controls.Add(label3);
             groupTargetAngle.Controls.Add(label2);
             groupTargetAngle.Controls.Add(label1);
@@ -213,7 +225,7 @@ namespace MobilityMonitor
             groupTargetAngle.ForeColor = Color.FromArgb(241, 241, 241);
             groupTargetAngle.Location = new Point(35, 236);
             groupTargetAngle.Name = "groupTargetAngle";
-            groupTargetAngle.Size = new Size(236, 93);
+            groupTargetAngle.Size = new Size(301, 93);
             groupTargetAngle.TabIndex = 10;
             groupTargetAngle.TabStop = false;
             groupTargetAngle.Text = "Target Angle";
@@ -244,26 +256,28 @@ namespace MobilityMonitor
             // 
             // btnTarget0
             // 
+            btnTarget0.BackColor = Color.FromArgb(69, 69, 69);
             btnTarget0.FlatStyle = FlatStyle.Flat;
             btnTarget0.ForeColor = Color.FromArgb(241, 241, 241);
-            btnTarget0.Location = new Point(133, 40);
+            btnTarget0.Location = new Point(179, 40);
             btnTarget0.Name = "btnTarget0";
-            btnTarget0.Size = new Size(75, 23);
+            btnTarget0.Size = new Size(75, 25);
             btnTarget0.TabIndex = 10;
             btnTarget0.Text = "0.0Åã";
-            btnTarget0.UseVisualStyleBackColor = true;
+            btnTarget0.UseVisualStyleBackColor = false;
             btnTarget0.Click += btnTarget0_Click;
             // 
             // btnTarget15
             // 
+            btnTarget15.BackColor = Color.FromArgb(69, 69, 69);
             btnTarget15.FlatStyle = FlatStyle.Flat;
             btnTarget15.ForeColor = Color.FromArgb(241, 241, 241);
-            btnTarget15.Location = new Point(30, 40);
+            btnTarget15.Location = new Point(51, 40);
             btnTarget15.Name = "btnTarget15";
-            btnTarget15.Size = new Size(75, 23);
+            btnTarget15.Size = new Size(75, 25);
             btnTarget15.TabIndex = 9;
             btnTarget15.Text = "15.0Åã";
-            btnTarget15.UseVisualStyleBackColor = true;
+            btnTarget15.UseVisualStyleBackColor = false;
             btnTarget15.Click += btnTarget15_Click;
             // 
             // btnExportCSV
@@ -271,9 +285,9 @@ namespace MobilityMonitor
             btnExportCSV.BackColor = Color.FromArgb(0, 122, 204);
             btnExportCSV.FlatStyle = FlatStyle.Flat;
             btnExportCSV.ForeColor = Color.FromArgb(241, 241, 241);
-            btnExportCSV.Location = new Point(36, 34);
+            btnExportCSV.Location = new Point(71, 34);
             btnExportCSV.Name = "btnExportCSV";
-            btnExportCSV.Size = new Size(75, 34);
+            btnExportCSV.Size = new Size(160, 35);
             btnExportCSV.TabIndex = 12;
             btnExportCSV.Text = "ExportCSV";
             btnExportCSV.UseVisualStyleBackColor = false;
@@ -281,14 +295,15 @@ namespace MobilityMonitor
             // 
             // groupBox1
             // 
+            groupBox1.BackColor = Color.FromArgb(51, 51, 55);
             groupBox1.Controls.Add(label4);
             groupBox1.Controls.Add(btnExportCSV);
             groupBox1.Controls.Add(label5);
             groupBox1.Controls.Add(label6);
             groupBox1.ForeColor = Color.FromArgb(241, 241, 241);
-            groupBox1.Location = new Point(35, 350);
+            groupBox1.Location = new Point(35, 341);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(171, 90);
+            groupBox1.Size = new Size(301, 90);
             groupBox1.TabIndex = 13;
             groupBox1.TabStop = false;
             groupBox1.Text = "Data Logging";
@@ -319,14 +334,15 @@ namespace MobilityMonitor
             // 
             // groupBox2
             // 
+            groupBox2.BackColor = Color.FromArgb(51, 51, 55);
             groupBox2.Controls.Add(label7);
             groupBox2.Controls.Add(label8);
             groupBox2.Controls.Add(btnEmergencyStop);
             groupBox2.Controls.Add(label9);
             groupBox2.ForeColor = Color.FromArgb(241, 241, 241);
-            groupBox2.Location = new Point(35, 467);
+            groupBox2.Location = new Point(35, 446);
             groupBox2.Name = "groupBox2";
-            groupBox2.Size = new Size(171, 88);
+            groupBox2.Size = new Size(301, 90);
             groupBox2.TabIndex = 14;
             groupBox2.TabStop = false;
             groupBox2.Text = "Emergency";
@@ -355,21 +371,44 @@ namespace MobilityMonitor
             label9.Size = new Size(0, 15);
             label9.TabIndex = 9;
             // 
-            // statusStrip1
+            // statusStrip
             // 
-            statusStrip1.Location = new Point(0, 581);
-            statusStrip1.Name = "statusStrip1";
-            statusStrip1.Size = new Size(1320, 22);
-            statusStrip1.TabIndex = 15;
-            statusStrip1.Text = "statusStrip1";
+            statusStrip.BackColor = Color.FloralWhite;
+            statusStrip.Items.AddRange(new ToolStripItem[] { lblComStatus, lblCurrentPitch, lblCurrentPwm });
+            statusStrip.Location = new Point(0, 581);
+            statusStrip.Name = "statusStrip";
+            statusStrip.Size = new Size(1320, 22);
+            statusStrip.TabIndex = 15;
+            statusStrip.Text = "statusStrip1";
+            // 
+            // lblComStatus
+            // 
+            lblComStatus.BackColor = Color.White;
+            lblComStatus.Name = "lblComStatus";
+            lblComStatus.Size = new Size(76, 17);
+            lblComStatus.Text = "lblComStatus";
+            // 
+            // lblCurrentPitch
+            // 
+            lblCurrentPitch.BackColor = Color.White;
+            lblCurrentPitch.Name = "lblCurrentPitch";
+            lblCurrentPitch.Size = new Size(86, 17);
+            lblCurrentPitch.Text = "lblCurrentPitch";
+            // 
+            // lblCurrentPwm
+            // 
+            lblCurrentPwm.BackColor = Color.White;
+            lblCurrentPwm.Name = "lblCurrentPwm";
+            lblCurrentPwm.Size = new Size(85, 17);
+            lblCurrentPwm.Text = "lblCurrentPwm";
             // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            BackColor = Color.FromArgb(37, 37, 38);
+            BackColor = Color.FromArgb(51, 51, 55);
             ClientSize = new Size(1320, 603);
-            Controls.Add(statusStrip1);
+            Controls.Add(statusStrip);
             Controls.Add(groupBox2);
             Controls.Add(groupBox1);
             Controls.Add(groupTargetAngle);
@@ -388,6 +427,8 @@ namespace MobilityMonitor
             groupBox1.PerformLayout();
             groupBox2.ResumeLayout(false);
             groupBox2.PerformLayout();
+            statusStrip.ResumeLayout(false);
+            statusStrip.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -421,6 +462,9 @@ namespace MobilityMonitor
         private Label label7;
         private Label label8;
         private Label label9;
-        private StatusStrip statusStrip1;
+        private StatusStrip statusStrip;
+        private ToolStripStatusLabel lblComStatus;
+        private ToolStripStatusLabel lblCurrentPitch;
+        private ToolStripStatusLabel lblCurrentPwm;
     }
 }

@@ -2,6 +2,8 @@
 using ScottPlot.Plottables;
 using System.Diagnostics;
 using System.IO.Ports;
+using Color = ScottPlot.Color;
+using System.Drawing;
 using Timer = System.Windows.Forms.Timer;
 
 namespace MobilityMonitor
@@ -33,6 +35,11 @@ namespace MobilityMonitor
         #region 準備
         private void SetupPlot()
         {
+            // グラフ全体の色をモダンなスレートカラーに合わせる
+            formsPlot1.Plot.FigureBackground.Color = Color.FromHex("#333337"); // フォームの背景色と同じ
+            formsPlot1.Plot.DataBackground.Color = Color.FromHex("#e7e7eb");   // データ部分は少し締める
+            formsPlot1.Plot.Axes.Color(Color.FromHex("#CCCCCC"));              // 軸の文字色
+
             loggerAccAngle = formsPlot1.Plot.Add.DataLogger();
             loggerGyroAngle = formsPlot1.Plot.Add.DataLogger();
             loggerCompRollAngle = formsPlot1.Plot.Add.DataLogger();
@@ -46,7 +53,7 @@ namespace MobilityMonitor
             loggerAccAngle.Color = Colors.LightBlue; // 加速度（水色）
             loggerGyroAngle.Color = Colors.Orange;   // ジャイロ（オレンジ）
             loggerCompRollAngle.Color = Colors.Green; // ロール角
-            loggerCompPitchAngle.Color = Colors.Purple; // ピッチ角
+            loggerCompPitchAngle.Color = Colors.Blue; // ピッチ角
 
             loggerCompPitchAngle.LineWidth = 2; // ピッチ角の線を太く
 
@@ -76,6 +83,15 @@ namespace MobilityMonitor
 
                     // Y軸を物理的な角度（例：-55度〜55度）に強制固定してオートスケールを無効化
                     formsPlot1.Plot.Axes.SetLimitsY(-55, 55);
+
+                    if (_logBuffer.Count > 0)
+                    {
+                        var latestData = _logBuffer.Last(); // System.Linqの機能で末尾を取得
+
+                        // F2で小数点2桁、F0で小数点なしにフォーマット
+                        lblCurrentPitch.Text = $"Pitch: {latestData.ActualPitch:F2} °";
+                        lblCurrentPwm.Text = $"PWM: {latestData.Pwm:F0} µs";
+                    }
                 }
                 formsPlot1.Refresh();
             };
@@ -90,9 +106,15 @@ namespace MobilityMonitor
             try
             {
                 serialPort.Open();
+
+                lblComStatus.Text = "🟢 COM8 Connected";
+                lblComStatus.ForeColor = System.Drawing.Color.Green;
             }
             catch (Exception ex)
             {
+                // 失敗したら赤色でエラーを表示
+                lblComStatus.Text = "🔴 Connection Failed";
+                lblComStatus.ForeColor = System.Drawing.Color.IndianRed;
                 MessageBox.Show("シリアルポートが開けませんでした：" + ex.Message);
             }
 
