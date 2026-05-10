@@ -6,10 +6,15 @@
 ![C#](https://img.shields.io/badge/GUI-C%23_WinForms-green)
 ![Python](https://img.shields.io/badge/Sim-Python-blue")
 <p align="center">
-  <img width="280" src="https://github.com/user-attachments/assets/bfff6428-eee4-4930-94cc-45fde598df4b" alt="System Demo" />
+  <img width="800" height="270" alt="demo" src="https://github.com/user-attachments/assets/12315e15-457f-445e-9b13-75332845d326" />
   <br>
   <strong>STM32とFreeRTOSによるリアルタイム姿勢制御システム</strong><br>
   <i>外乱に対しても速やかに水平に復帰します。</i>
+  <details>
+  <summary><b>GIFが動かない場合こちら</b></summary>
+  <video width="800" src="https://github.com/user-attachments/assets/517f9ca4-d4b6-4366-984e-a72b3eb49028" contenteditable="false" muted autoplay loop playsinline controls>  
+  </video>
+  </details>
 </p>
 
 ## 1. Background
